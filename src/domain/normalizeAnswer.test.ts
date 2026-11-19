@@ -12,7 +12,7 @@ describe('normalizeAnswer', () => {
   });
 
   it('removes invisible bidi marks from Hebrew-keyboard input', () => {
-    expect(normalizeAnswer('‏hello‎')).toBe('hello');
+    expect(normalizeAnswer('\u200Fhello\u200E')).toBe('hello');
   });
 
   it('keeps punctuation, which is a grading decision, not normalization', () => {

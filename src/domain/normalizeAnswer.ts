@@ -14,8 +14,8 @@
  */
 export function normalizeAnswer(input: string): string {
   return input
-    .replace(/[‎‏‪-‮⁦-⁩]/g, '')
-    .replace(/[‘’ʼ´`]/g, "'")
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/[\u2018\u2019\u02BC\u00B4`]/g, "'")
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();

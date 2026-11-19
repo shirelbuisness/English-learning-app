@@ -26,6 +26,15 @@ Requires Node.js ≥ 20.19.
 > lockfile works fine. When adding or upgrading dependencies, use npm 11:
 > `npx npm@11 install <pkg>`.
 
+## Development guardrails
+
+- `CLAUDE.md`: project rules for AI-assisted development (architecture, privacy,
+  offline-first, verification, git workflow, approval rules).
+- `docs/educational-principles.md`: binding educational principles.
+- `.claude/agents/`: `curriculum-author`, `pedagogy-reviewer`, `code-reviewer`.
+- `.claude/skills/`: `/add-lesson`, `/verify-milestone`.
+- CI (`.github/workflows/ci.yml`): `npm ci`, typecheck, test, build.
+
 ## Architecture rules
 
 ```

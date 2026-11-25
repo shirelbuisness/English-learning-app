@@ -49,6 +49,9 @@ export function SetupPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: 
               </div>
             }
           >
+            {editPilot?.contractorId === c.id && c.isDemo && !editPilot.pilot && (
+              <p className="mb-2 text-xs text-amber-900">Pilots under a demo contractor are demo data: “Reset demo data” deletes them.</p>
+            )}
             {editPilot?.contractorId === c.id && (
               <PilotForm
                 initial={editPilot.pilot ?? { ...defaultPilotInput(now().today), name: `Pilot ${pilots.length + 1}` }}

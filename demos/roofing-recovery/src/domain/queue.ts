@@ -1,5 +1,5 @@
 import { prioritize, PRIORITY_ORDER, type PriorityCategory } from './priority.ts';
-import { contactedTouches, nextStep, openTouch, pendingReply, sequenceComplete, stepDueOn } from './records.ts';
+import { contactedTouches, isRestricted, nextStep, openTouch, pendingReply, sequenceComplete, stepDueOn } from './records.ts';
 import { findPilot } from './eligibility.ts';
 import { OUTCOME_LABELS, type EstimateRecord, type IsoDate, type WorkbenchState } from './types.ts';
 
@@ -11,6 +11,7 @@ export type TaskKind =
   | 'review'
   | 'prepare_draft'
   | 'finish_draft'
+  | 'revise_draft'
   | 'awaiting_approval'
   | 'contact_due'
   | 'reply'
@@ -31,6 +32,7 @@ const TASKS: Record<TaskKind, { group: number; label: string }> = {
   review: { group: 1, label: 'Review eligibility' },
   prepare_draft: { group: 2, label: 'Prepare draft' },
   finish_draft: { group: 2, label: 'Finish draft & submit for approval' },
+  revise_draft: { group: 2, label: 'Revise draft — record changed after approval' },
   awaiting_approval: { group: 2, label: 'Record contractor approval' },
   contact_due: { group: 3, label: 'Contact homeowner & confirm' },
   reply: { group: 4, label: 'Review reply' },
@@ -60,6 +62,14 @@ export function taskFor(state: WorkbenchState, r: EstimateRecord, today: IsoDate
   const pr = prioritize(state, r, today);
   const base = { touchId: null as string | null, dueOn: null as string | null, priority: pr.category };
 
+  // Restrictions override every workflow state. A handoff the contractor already has
+  // can still be acknowledged and closed out; nothing else surfaces.
+  if (isRestricted(r)) {
+    const h = r.handoff;
+    if (h?.notifiedOn && !h.acknowledgedOn) return { ...base, kind: 'await_ack', detail: `Record is ${r.eligibility.status} — record acknowledgement only` };
+    if (h?.acknowledgedOn && !h.outcome) return { ...base, kind: 'await_outcome', detail: `Record is ${r.eligibility.status} — record outcome only` };
+    return null;
+  }
   if (r.handoff) {
     const h = r.handoff;
     if (!h.notifiedOn) return { ...base, kind: 'notify_contractor', detail: `${h.homeownerRequest} → ${h.nextAction}`, dueOn: h.respondedOn };
@@ -79,6 +89,7 @@ export function taskFor(state: WorkbenchState, r: EstimateRecord, today: IsoDate
     if (open.status === 'draft') return { ...base, kind: 'finish_draft', touchId: open.id, dueOn: due, detail: `Step ${open.step} · ${open.channel}` };
     if (open.status === 'awaiting_approval') return { ...base, kind: 'awaiting_approval', touchId: open.id, dueOn: due, detail: `Step ${open.step} · ${open.channel} · sent to contractor` };
     if (open.status === 'approved') {
+      if (open.preparedForVersion !== r.version) return { ...base, kind: 'revise_draft', touchId: open.id, dueOn: due, detail: `Step ${open.step} · approved before the record changed — revise and re-approve` };
       if (due > today) return null; // scheduled, not yet due
       return { ...base, kind: 'contact_due', touchId: open.id, dueOn: due, detail: `Step ${open.step} · ${open.channel} · approved, not yet contacted` };
     }
@@ -169,6 +180,7 @@ export const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
 };
 
 export function workflowStatus(state: WorkbenchState, r: EstimateRecord): WorkflowStatus {
+  if (isRestricted(r) && !r.handoff) return 'restricted';
   if (r.handoff) return r.handoff.outcome ? 'outcome_reported' : r.handoff.acknowledgedOn ? 'handoff_acknowledged' : 'handoff';
   if (r.qualification) return 'qualified';
   if (pendingReply(r)) return 'reply';

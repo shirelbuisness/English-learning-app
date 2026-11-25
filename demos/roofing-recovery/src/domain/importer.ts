@@ -251,10 +251,32 @@ function parseRow(get: (c: TemplateColumn) => string, today: string): { parsed: 
 
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
-function diffRecord(existing: EstimateRecord, row: ParsedRow): FieldDiff[] {
+/** Which record field each template column fills. A field is only compared/updated when its column has a value. */
+const FIELD_COLUMN: Record<string, TemplateColumn> = {
+  customerName: 'customer_name',
+  email: 'customer_email',
+  phone: 'customer_phone',
+  estimateDate: 'estimate_date',
+  estimateAmount: 'estimate_amount',
+  service: 'service_requested',
+  city: 'property_city',
+  state: 'property_state',
+  estimateStatus: 'estimate_status',
+  lastContactDate: 'last_contact_date',
+  previousFollowUps: 'previous_follow_up_count',
+  inquirySource: 'inquiry_source',
+  emailConsent: 'email_consent',
+  phoneConsent: 'phone_consent',
+  smsConsent: 'sms_consent',
+  evidence: 'authorization_evidence',
+};
+
+function diffRecord(existing: EstimateRecord, row: ParsedRow, original: Record<string, string>): FieldDiff[] {
   const diffs: FieldDiff[] = [];
+  // Missing columns or blank cells never overwrite existing data.
+  const provided = (field: string) => (original[FIELD_COLUMN[field]!] ?? '').trim() !== '';
   const cmp = (field: string, label: string, a: unknown, b: unknown, updatable: boolean) => {
-    if (show(a) !== show(b)) diffs.push({ field, label, existing: show(a), incoming: show(b), updatable });
+    if (provided(field) && show(a) !== show(b)) diffs.push({ field, label, existing: show(a), incoming: show(b), updatable });
   };
   cmp('customerName', 'Name', existing.customerName, row.customerName, false);
   cmp('email', 'Email', existing.email, row.email, false);
@@ -387,7 +409,7 @@ export function analyzeImport(state: WorkbenchState, pilotId: string, text: stri
       if (emailHits.length) on.push('email');
       if (phoneHits.length) on.push('phone');
       result.match = { kind: 'duplicate', recordId: rec.id, recordName: rec.customerName, on };
-      result.differences = diffRecord(rec, p);
+      result.differences = diffRecord(rec, p, original);
       result.allowed = result.differences.some((d) => d.updatable) ? ['skip', 'update'] : ['skip'];
       return result;
     }
@@ -585,7 +607,11 @@ function applyDuplicateUpdate(tx: Tx, rec: EstimateRecord, row: RowAnalysis): vo
     applySuppression(tx, rec, 'Previous opt-out reported in re-import', 'import', tx.clock.today, 'import');
   } else if (row.differences.some((d) => d.field === 'contractorExclude')) {
     setEligibilityStatus(tx, rec, 'excluded', 'Excluded by contractor in re-import', 'contractor');
+  } else if (!applied.some((a) => a.startsWith('Estimate status'))) {
+    // no status change
   } else if ((p.estimateStatus === 'sold' || p.estimateStatus === 'lost') && (rec.eligibility.status === 'eligible' || rec.eligibility.status === 'pending_review')) {
     setEligibilityStatus(tx, rec, 'ineligible', `Estimate ${p.estimateStatus} (re-import)`, 'import');
+  } else if (p.estimateStatus !== 'open' && rec.eligibility.status === 'eligible') {
+    setEligibilityStatus(tx, rec, 'pending_review', `Estimate status changed to ${p.estimateStatus} (re-import) — review required`, 'import');
   }
 }

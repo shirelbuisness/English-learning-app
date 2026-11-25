@@ -86,14 +86,18 @@ Suppression and exclusion override every workflow state:
 - Applying either one immediately blocks every open draft, submitted draft and approved draft. Withdrawing a channel from the pilot blocks drafts on that channel. Changing contact details or evidence sends an eligible record back to review.
 - `contactBlockers()` is rerun right before every submission, approval and contact confirmation, including inside batch approval.
 - Lifting a suppression or exclusion is a separate review action that needs a reason. It is audited and returns the record to *pending review*, never straight to eligible. Previously blocked drafts stay blocked.
+- If the same contact is also on the ledger from another record or a cleared pilot, the record-level review is refused until that ledger entry is reviewed (Data page).
+- A suppressed or excluded record cannot have a reply qualified, a handoff created or the contractor notified. A handoff the contractor was already told about can still be acknowledged and closed out.
+- A message approved before the record changed (for example, an updated estimate from a re-import) cannot be recorded as contacted. It shows in the queue as "Revise draft". Revising revokes the approval, which is audited, and the message must be approved again.
 
 ### Suppression ledger
 
 The ledger is scoped to the contractor and stored separately from pilot records:
-- Opt-outs (recorded during outreach, entered manually, or reported in an import) add the contact's normalised email and phone to it.
+- Opt-outs (recorded during outreach, entered manually, or reported in an import) add the contact's normalised email and phone to it, and immediately suppress the same contact (matched on email or phone) in every other pilot of that contractor.
 - Imports check it. A matching contact is imported as suppressed.
 - Clearing a pilot keeps it, so a re-import cannot re-enable a suppressed contact.
 - Another contractor's ledger does not apply. How long entries are kept is **not** decided; see below.
+- An entry can be lifted on the Data page with a reason of at least 10 characters. This is audited and does not un-suppress any record; each record needs its own review.
 
 ### Deduplication
 
@@ -101,7 +105,8 @@ Deduplication is deterministic and works within one pilot only:
 - Matches are exact on normalised email or normalised phone. There is no name or address matching.
 - If the email and phone match different records, the row is a conflict and can only be skipped.
 - For a duplicate, the operator sees the fields that differ:
-  - "Update" applies only estimate details (amount, status, service, city/state, last contact, follow-up count).
+  - "Update" applies only estimate details (amount, status, service, city/state, last contact, follow-up count), and only from columns the file actually contains with a non-blank value. A partial file never blanks existing data.
+  - A status change to sold or lost makes an eligible record ineligible. A change to unknown sends it back to review.
   - Restrictions in the file (opt-out, exclusion, sold/lost) can only tighten a record.
   - History, eligibility, authorization evidence and workflow state are never reset.
 - Re-importing unchanged data changes nothing.
@@ -123,7 +128,7 @@ Outcome effects:
 - Incorrect contact → ineligible.
 - Positive replies wait for review.
 
-A reply becomes a **qualified re-engagement** only when the operator confirms that the homeowner said the project is unresolved and asked for a next step. A handoff needs that qualification. A won job needs the contractor's confirmation.
+A reply becomes a **qualified re-engagement** only when it is a positive reply (interested, callback, inspection or revised estimate) and the operator confirms that the homeowner said the project is unresolved and asked for a next step. An "Other" reply must first be reclassified (audited) or the record closed. This keeps the outcome ladder nested: replies ⊇ positive ⊇ qualified ⊇ handoffs ⊇ acknowledged ⊇ appointments ⊇ jobs won. A handoff needs that qualification. A won job needs the contractor's confirmation.
 
 ### Prioritisation
 
@@ -148,11 +153,11 @@ Records under 14 days old, or contacted by the contractor in the last 7 days, ar
 | `src/domain/economics.ts` | Time entries, expenses, hourly-cost assumption, revenue |
 | `src/domain/lifecycle.ts` | Clear pilot, strip demo data, JSON/CSV exports |
 | `src/domain/templates.ts` | Local, rule-based message drafts (no AI service) |
-| `src/storage/localStore.ts` | Persistence boundary (`load`/`save`). Today: browser `localStorage`, one JSON write per command. Unreadable data is backed up, not discarded. |
+| `src/storage/localStore.ts` | Persistence boundary (`load`/`save`). Today: browser `localStorage`, one JSON write per command. Stored data is shape-checked on load; unreadable data is backed up, not discarded, and not overwritten at start-up. The id counter is repaired if it lags behind existing ids. A revision number stops a stale browser tab from overwriting newer changes made in another tab. |
 | `src/data/demoSeed.ts` | Synthetic demo, built by running the real commands in date order |
 | `src/ui/` | React screens; display and input only |
 
-The audit log is append-only. Each event has the record, pilot and contractor ids, the event type, a timestamp, the from/to state and a detail. The current state is kept as ordinary records; this is not event sourcing.
+The activity log is append-only within the application: no command edits or removes earlier events, except clearing a pilot, which deletes that pilot's events and keeps a summary event, and resetting the demo. It is **not** tamper-proof: anyone with access to the browser profile can edit browser storage. Each event has the record, pilot and contractor ids, the event type, a timestamp, the from/to state and a detail. The current state is kept as ordinary records; this is not event sourcing.
 
 ### Export format
 
@@ -178,7 +183,8 @@ The three operations are separate. None of them affects the others.
 ## Known limitations
 
 - **Storage.** It is browser `localStorage`: one browser profile, not encrypted, no backup, no multi-device sync, and roughly a 5 MB limit (enough for several pilots of this size).
-- **Single operator.** There are no user accounts, so the audit log does not record *who* acted.
+- **Single operator.** There are no user accounts, so the activity log does not record *who* acted.
+- **Two tabs.** A stale tab cannot overwrite newer changes: its save is refused and the latest data is reloaded. The check is not a lock; two tabs saving in the same instant are not fully excluded.
 - **Clock.** Dates use the operator's local calendar day. Contractor time zones are stored but not yet used for scheduling.
 - **No automation.** There is no scheduling, reminders, email or SMS sending, calendar, or CRM sync; by design for this stage.
 - **Templates.** There are three email templates plus a call script. Policy text is free text, not per-pilot editable templates.

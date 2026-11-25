@@ -46,7 +46,9 @@ export function pilotReport(state: WorkbenchState, pilotId: string, today: IsoDa
   const expenses = state.expenses.filter((e) => e.pilotId === pilotId).reduce((a, e) => a + e.amount, 0);
   const totalCost = laborCost + expenses;
   const revenue = pilot?.revenue ?? 0;
-  const eligibleEver = records.filter((r) => r.eligibility.status === 'eligible' || r.touches.length > 0).length;
+  // Denominator from the recorded history: every record that was ever marked eligible.
+  const everEligibleIds = new Set(events.filter((e) => e.type === 'eligibility_changed' && e.to === 'eligible' && e.recordId).map((e) => e.recordId!));
+  const eligibleEver = records.filter((r) => r.eligibility.status === 'eligible' || everEligibleIds.has(r.id)).length;
 
   return {
     pilot,
@@ -101,7 +103,7 @@ export function pilotReport(state: WorkbenchState, pilotId: string, today: IsoDa
       return {
         label: b.label,
         records: inBand.length,
-        eligible: inBand.filter((r) => r.eligibility.status === 'eligible' || r.touches.length > 0).length,
+        eligible: inBand.filter((r) => r.eligibility.status === 'eligible' || everEligibleIds.has(r.id)).length,
         contacted: inBand.filter((r) => contactedTouches(r).length > 0).length,
         replies: inBand.filter((r) => repliedRecords.includes(r)).length,
         qualified: inBand.filter((r) => r.qualification).length,

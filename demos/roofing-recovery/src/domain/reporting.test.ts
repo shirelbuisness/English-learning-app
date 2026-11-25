@@ -172,9 +172,9 @@ describe('persistence boundary', () => {
     const mem = new Map<string, string>();
     const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
     const store = createLocalStore(storage);
-    expect(store.load()).toEqual({ state: null, error: null });
+    expect(store.load()).toEqual({ state: null, error: null, revision: 0 });
     const s = demo();
-    expect(store.save(s)).toBe(true);
+    expect(store.save(s, 0)).toEqual({ ok: true, revision: 1 });
     expect(store.load().state).toEqual(s);
     mem.set(STORAGE_KEY, '{"schemaVersion":1}');
     const bad = store.load();

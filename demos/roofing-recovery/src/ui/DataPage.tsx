@@ -3,6 +3,7 @@ import { withDemoData } from '../data/demoSeed.ts';
 import { formatDate, formatTimestamp } from '../domain/dates.ts';
 import { clearPilot, clearPilotPreview, logExport, pilotExport } from '../domain/lifecycle.ts';
 import { formatPhone } from '../domain/normalize.ts';
+import { reverseLedgerEntry } from '../domain/records.ts';
 import type { Pilot } from '../domain/types.ts';
 import { Badge, Button, Callout, Card, cx, Field, inputClass, td, th } from './shared.tsx';
 import { download, now, type Workbench } from './useWorkbench.ts';
@@ -15,6 +16,8 @@ export function DataPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: P
   const [understood, setUnderstood] = useState(false);
   const [ledgerFor, setLedgerFor] = useState(state.contractors[0]?.id ?? '');
   const [logPilot, setLogPilot] = useState('');
+  const [lifting, setLifting] = useState<string | null>(null);
+  const [liftReason, setLiftReason] = useState('');
   const clearTarget = state.pilots.find((p) => p.id === clearId);
   const preview = clearTarget ? clearPilotPreview(state, clearTarget.id) : null;
   const pilotLabel = (p: Pilot) => `${state.contractors.find((c) => c.id === p.contractorId)?.businessName ?? '?'} — ${p.name}`;
@@ -118,7 +121,7 @@ export function DataPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: P
 
       <Card
         title="Suppression ledger"
-        subtitle="Contractor-scoped do-not-contact list, kept separately from pilot records so clearing a pilot cannot re-enable a contact. Retention period must be set by a reviewed legal and privacy policy before real data is used."
+        subtitle="Contractor-scoped do-not-contact list, kept separately from pilot records so clearing a pilot cannot re-enable a contact. Lifting an entry needs a reason and does not un-suppress any record. Retention period must be set by a reviewed legal and privacy policy before real data is used."
         action={
           <select className={cx(inputClass, 'w-64')} value={ledgerFor} onChange={(e) => setLedgerFor(e.target.value)} aria-label="Contractor">
             {state.contractors.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
@@ -137,7 +140,21 @@ export function DataPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: P
                     <td className={td}>{e.reason}</td>
                     <td className={td}>{e.channel}</td>
                     <td className={cx(td, 'whitespace-nowrap')}>{formatDate(e.recordedOn)}</td>
-                    <td className={td}>{e.active ? <Badge tone="red">Active</Badge> : <span className="text-xs text-slate-500">Lifted {formatTimestamp(e.reversedAt)}: {e.reversalReason}</span>}</td>
+                    <td className={td}>
+                      {e.active ? (
+                        lifting === e.id ? (
+                          <form className="flex flex-wrap items-center gap-2" onSubmit={(ev) => { ev.preventDefault(); if (wb.run((st, c) => reverseLedgerEntry(st, e.id, liftReason, c)).ok) { setLifting(null); setLiftReason(''); } }}>
+                            <input autoFocus aria-label="Reason for lifting" className={cx(inputClass, 'w-56')} placeholder="Reason (audited)" value={liftReason} onChange={(ev) => setLiftReason(ev.target.value)} />
+                            <Button size="sm" type="submit" variant="danger">Lift entry</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setLifting(null)}>Cancel</Button>
+                          </form>
+                        ) : (
+                          <span className="flex items-center gap-2"><Badge tone="red">Active</Badge><Button size="sm" variant="ghost" onClick={() => { setLifting(e.id); setLiftReason(''); }}>Review…</Button></span>
+                        )
+                      ) : (
+                        <span className="text-xs text-slate-500">Lifted {formatTimestamp(e.reversedAt)}: {e.reversalReason}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

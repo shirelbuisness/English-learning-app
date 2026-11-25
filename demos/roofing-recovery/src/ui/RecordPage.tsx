@@ -12,6 +12,7 @@ import {
   createHandoff,
   editDraft,
   excludeRecord,
+  isRestricted,
   lastContacted,
   markHandoffNotified,
   nextStep,
@@ -35,6 +36,7 @@ import {
   HANDOFF_OUTCOME_LABELS,
   OUTCOME_LABELS,
   OUTCOMES,
+  POSITIVE_OUTCOMES,
   REQUEST_LABELS,
   TEMPLATE_LABELS,
   type Channel,
@@ -170,7 +172,7 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
           </Card>
 
           <OutreachCard wb={wb} record={r} form={form} setForm={setForm} today={today} />
-          <ReplyCard wb={wb} record={r} form={form} setForm={setForm} />
+          <ReplyCard wb={wb} record={r} form={form} setForm={setForm} today={today} />
           <HandoffCard key={r.qualification?.at ?? "unqualified"} wb={wb} record={r} today={today} />
         </div>
 
@@ -247,6 +249,7 @@ function nextActionText(kind: string): string {
       review: 'Review eligibility and authorization evidence.',
       prepare_draft: 'Prepare the next follow-up draft.',
       finish_draft: 'Finish the draft and mark it sent to the contractor for approval.',
+      revise_draft: 'The record changed after approval. Revise the draft and get it approved again before any contact.',
       awaiting_approval: 'Record the contractor’s approval once received.',
       contact_due: 'Contact the homeowner outside this tool, then record the contact.',
       reply: 'Review the homeowner’s reply: qualify it or close the record.',
@@ -267,7 +270,7 @@ function OutreachCard({ wb, record: r, form, setForm, today }: { wb: Workbench; 
   const step = nextStep(r, pilot);
   const permitted = permittedChannels(r, pilot);
   const last = lastContacted(r);
-  const canDraft = !open && step && r.eligibility.status === 'eligible' && !pendingReply(r);
+  const canDraft = !open && step && r.eligibility.status === 'eligible' && !pendingReply(r) && pilot.status !== 'completed';
   const dueOn = step ? stepDueOn(r, pilot, step.step, today) : null;
   const [channel, setChannel] = useState<Channel | ''>('');
 
@@ -356,7 +359,7 @@ function OpenTouch({ wb, record: r, touch: t, today }: { wb: Workbench; record: 
       <textarea
         aria-label="Message draft"
         value={text}
-        readOnly={!editable}
+        readOnly={!editable && t.status !== 'approved'}
         onChange={(e) => setText(e.target.value)}
         rows={t.channel === 'phone' ? 7 : 9}
         className={cx(inputClass, 'leading-relaxed', !editable && 'bg-slate-50')}
@@ -396,12 +399,20 @@ function OpenTouch({ wb, record: r, touch: t, today }: { wb: Workbench; record: 
           <Button disabled={!dirty} onClick={() => wb.run((s, c) => editDraft(s, t.id, text, c))}>Save edit (needs re-approval)</Button>
         </div>
       )}
-      {t.status === 'approved' && <ContactForm wb={wb} touch={t} today={today} due={due} />}
+      {t.status === 'approved' && stale && (
+        <Callout tone="amber">The record changed after this message was approved. It cannot be recorded as contacted until it is revised and approved again.</Callout>
+      )}
+      {t.status === 'approved' && (
+        <div className="flex flex-wrap gap-2">
+          <Button variant={stale ? 'primary' : 'ghost'} onClick={() => wb.run((s, c) => editDraft(s, t.id, text, c))}>Revise draft (revokes approval)</Button>
+        </div>
+      )}
+      {t.status === 'approved' && <ContactForm wb={wb} touch={t} today={today} due={due} blocked={stale ? ['Record changed after approval', ...blockers] : blockers} />}
     </div>
   );
 }
 
-function ContactForm({ wb, touch: t, today, due }: { wb: Workbench; touch: Touch; today: string; due: string }) {
+function ContactForm({ wb, touch: t, today, due, blocked }: { wb: Workbench; touch: Touch; today: string; due: string; blocked: string[] }) {
   const [confirmed, setConfirmed] = useState(false);
   const [date, setDate] = useState(today);
   const [outcome, setOutcome] = useState<Outcome>('no_response');
@@ -427,7 +438,8 @@ function ContactForm({ wb, touch: t, today, due }: { wb: Workbench; touch: Touch
         <span>I confirm this communication actually took place on the date above.</span>
       </label>
       <div className="mt-3">
-        <Button variant="confirm" disabled={!confirmed} onClick={() => wb.run((s, c) => confirmContact(s, t.id, { confirmed, contactedOn: date, channel: t.channel, outcome, notes }, c))}>
+        {blocked.length > 0 && <p className="mb-2 text-sm text-red-800">Cannot be recorded now: {blocked.join('; ')}.</p>}
+        <Button variant="confirm" disabled={!confirmed || blocked.length > 0} onClick={() => wb.run((s, c) => confirmContact(s, t.id, { confirmed, contactedOn: date, channel: t.channel, outcome, notes }, c))}>
           Record completed contact
         </Button>
       </div>
@@ -437,7 +449,7 @@ function ContactForm({ wb, touch: t, today, due }: { wb: Workbench; touch: Touch
 
 /* ---------------------------------------------------------- reply & handoff */
 
-function ReplyCard({ wb, record: r, form, setForm }: { wb: Workbench; record: EstimateRecord; form: Form; setForm: (f: Form) => void }) {
+function ReplyCard({ wb, record: r, form, setForm, today }: { wb: Workbench; record: EstimateRecord; form: Form; setForm: (f: Form) => void; today: string }) {
   const reply = pendingReply(r);
   const [confirmed, setConfirmed] = useState(false);
   const [request, setRequest] = useState<RequestKind>('callback');
@@ -450,6 +462,27 @@ function ReplyCard({ wb, record: r, form, setForm }: { wb: Workbench; record: Es
           <strong>Qualified re-engagement</strong> on {formatTimestamp(r.qualification.at)} — requested {REQUEST_LABELS[r.qualification.request].toLowerCase()}.
           {r.qualification.notes && <span className="text-slate-600"> {r.qualification.notes}</span>}
         </p>
+      ) : reply && isRestricted(r) ? (
+        <Callout tone="red">
+          This record is {r.eligibility.status}. The reply ({OUTCOME_LABELS[reply.outcome!]}) cannot be qualified or handed off unless the restriction is reviewed.
+        </Callout>
+      ) : reply && !POSITIVE_OUTCOMES.has(reply.outcome!) ? (
+        <div className="space-y-3 text-sm">
+          <p>
+            <Badge tone="amber">{OUTCOME_LABELS[reply.outcome!]}</Badge> to step {reply.step} on {formatDate(reply.contactedOn)}
+            {reply.notes && <span className="text-slate-600"> — {reply.notes}</span>}
+          </p>
+          <p className="text-slate-600">Only a specific positive reply can be qualified. Reclassify this reply, or close the record if it needs no follow-up.</p>
+          {form === 'late' ? (
+            <LateResponseForm title="Reclassify reply" today={today} permitted={['email', 'phone', 'sms']} onCancel={() => setForm(null)} onSubmit={(input) => wb.run((s, c) => recordResponse(s, r.id, input, c)).ok && setForm(null)} />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setForm('late')}>Reclassify reply…</Button>
+              <Button variant="ghost" onClick={() => setForm('close')}>Close record…</Button>
+            </div>
+          )}
+          {form === 'close' && <ReasonForm label="Why close this record?" submit="Close record" onCancel={() => setForm(null)} onSubmit={(reason) => wb.run((s, c) => closeRecord(s, r.id, reason, c)).ok && setForm(null)} />}
+        </div>
       ) : reply ? (
         <div className="space-y-3 text-sm">
           <p>
@@ -488,6 +521,9 @@ function HandoffCard({ wb, record: r, today }: { wb: Workbench; record: Estimate
   const [oc, setOc] = useState<{ outcome: HandoffOutcome; notes: string; verified: boolean; value: string }>({ outcome: 'appointment_reported', notes: '', verified: false, value: '' });
   if (!r.qualification) return null;
 
+  if (!h && isRestricted(r)) {
+    return <Card title="Warm handoff"><Callout tone="red">This record is {r.eligibility.status}; no handoff can be created.</Callout></Card>;
+  }
   if (!h) {
     return (
       <Card title="Create warm handoff" subtitle="Passes the homeowner to the contractor. The contractor has not contacted the homeowner until they confirm it.">
@@ -503,6 +539,7 @@ function HandoffCard({ wb, record: r, today }: { wb: Workbench; record: Estimate
   }
 
   const stage = h.outcome ? 4 : h.acknowledgedOn ? 3 : h.notifiedOn ? 2 : 1;
+  const restricted = isRestricted(r);
   return (
     <Card title="Warm handoff" action={<ol className="flex flex-wrap gap-1 text-xs">{['Created', 'Contractor notified', 'Acknowledged', 'Outcome'].map((s, i) => <li key={s}><Badge tone={i < stage ? 'green' : 'plain'}>{i < stage ? '✓ ' : ''}{s}</Badge></li>)}</ol>}>
       <dl className="space-y-1.5 text-sm">
@@ -515,7 +552,8 @@ function HandoffCard({ wb, record: r, today }: { wb: Workbench; record: Estimate
         <Row k="Contractor-reported outcome" v={h.outcome ? `${HANDOFF_OUTCOME_LABELS[h.outcome]} (${formatDate(h.outcomeOn)})${h.reportedJobValue ? ` · ${formatUsd(h.reportedJobValue)}` : ''}${h.outcomeNotes ? ` — ${h.outcomeNotes}` : ''}` : '—'} />
       </dl>
       <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-        {stage === 1 && (
+        {restricted && <Callout tone="red">This record is {r.eligibility.status}. {stage === 1 ? 'Do not pass it to the contractor.' : 'Only the contractor’s acknowledgement and outcome can still be recorded.'}</Callout>}
+        {stage === 1 && !restricted && (
           <div className="flex flex-wrap items-end gap-2">
             <Field label="Notified on"><input type="date" className={inputClass} max={today} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <Button variant="primary" onClick={() => wb.run((s, c) => markHandoffNotified(s, r.id, date, c))}>Record contractor notified</Button>
@@ -598,7 +636,7 @@ function SuppressForm({ today, onSubmit, onCancel }: { today: string; onSubmit: 
   );
 }
 
-function LateResponseForm({ today, permitted, onSubmit, onCancel }: { today: string; permitted: Channel[]; onSubmit: (i: { outcome: Exclude<Outcome, 'no_response'>; date: string; channel: Channel; notes: string }) => void; onCancel: () => void }) {
+function LateResponseForm({ title = 'Record reply', today, permitted, onSubmit, onCancel }: { title?: string; today: string; permitted: Channel[]; onSubmit: (i: { outcome: Exclude<Outcome, 'no_response'>; date: string; channel: Channel; notes: string }) => void; onCancel: () => void }) {
   const [f, setF] = useState({ outcome: 'interested' as Exclude<Outcome, 'no_response'>, date: today, channel: (permitted[0] ?? 'email') as Channel, notes: '' });
   return (
     <form className="grid gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-3" onSubmit={(e) => { e.preventDefault(); onSubmit(f); }}>
@@ -615,7 +653,7 @@ function LateResponseForm({ today, permitted, onSubmit, onCancel }: { today: str
       </Field>
       <Field label="Notes" className="sm:col-span-3"><input className={inputClass} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
       <div className="flex gap-2 sm:col-span-3">
-        <Button type="submit" variant="primary">Record reply</Button>
+        <Button type="submit" variant="primary">{title}</Button>
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
     </form>

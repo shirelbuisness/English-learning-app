@@ -69,6 +69,13 @@ export function sequenceComplete(record: EstimateRecord, pilot: Pilot): boolean 
   return done.length >= pilot.sequence.length && done.at(-1)?.outcome === 'no_response';
 }
 
+const RESTRICTED: ReadonlySet<EligibilityStatus> = new Set(['suppressed', 'excluded']);
+
+/** Suppressed or excluded: overrides every workflow state, including replies and handoffs. */
+export function isRestricted(record: EstimateRecord): boolean {
+  return RESTRICTED.has(record.eligibility.status);
+}
+
 /* ------------------------------------------------------------------ helpers */
 
 function getRecord(tx: Tx, recordId: string): EstimateRecord {
@@ -151,6 +158,13 @@ export function applySuppression(tx: Tx, record: EstimateRecord, reason: string,
     });
     tx.log({ type: 'suppression_ledger_added', ...ctx(record, tx), detail: `Added to suppression ledger: ${reason}` });
   }
+  // The ledger is contractor-wide: the same contact in any other pilot of this contractor is suppressed now, not later.
+  for (const other of tx.s.records) {
+    if (other.id === record.id || other.eligibility.status === 'suppressed') continue;
+    if (tx.s.pilots.find((p) => p.id === other.pilotId)?.contractorId !== pilot.contractorId) continue;
+    const same = (record.email && other.email === record.email) || (record.phone && other.phone === record.phone);
+    if (same) setEligibilityStatus(tx, other, 'suppressed', `Same contact suppressed on record ${record.id}: ${reason}`, 'ledger');
+  }
 }
 
 /* --------------------------------------------------------------- eligibility */
@@ -212,7 +226,15 @@ export function reviewRestriction(state: WorkbenchState, recordId: string, reaso
     if (reason.trim().length < 10) fail('Explain the reason for lifting the restriction (at least 10 characters).');
     if (from === 'suppressed') {
       const pilot = getPilot(tx, r.pilotId);
-      for (const e of ledgerMatches(tx.s, pilot.contractorId, r.email, r.phone)) {
+      const matches = ledgerMatches(tx.s, pilot.contractorId, r.email, r.phone);
+      const others = matches.filter((e) => e.recordId !== r.id);
+      if (others.length > 0) {
+        fail(
+          `This contact is also on the contractor's suppression ledger from another record or an earlier pilot (${others.map((e) => e.reason).join('; ')}). ` +
+            'Review and lift that ledger entry on the Data page first.',
+        );
+      }
+      for (const e of matches) {
         e.active = false;
         e.reversedAt = clock.now;
         e.reversalReason = reason.trim();
@@ -240,6 +262,10 @@ export function updateRecordDetails(state: WorkbenchState, recordId: string, inp
     const phone = normalizePhone(input.phone);
     if (email.invalid) fail('Email address is not valid.');
     if (phone.invalid) fail('Phone number is not a valid US number.');
+    const clash = tx.s.records.find(
+      (o) => o.id !== r.id && o.pilotId === r.pilotId && ((email.value && o.email === email.value) || (phone.value && o.phone === phone.value)),
+    );
+    if (clash) fail(`Another record in this pilot (${clash.customerName}) already uses this email or phone. Resolve the duplicate instead.`);
     const before = JSON.stringify([r.email, r.phone, r.authorization]);
     r.email = email.value;
     r.phone = phone.value;
@@ -272,6 +298,7 @@ export function prepareDraft(state: WorkbenchState, recordId: string, clock: Clo
     const r = getRecord(tx, recordId);
     const pilot = getPilot(tx, r.pilotId);
     const contractor = tx.s.contractors.find((c) => c.id === pilot.contractorId) ?? fail('Contractor not found.');
+    if (pilot.status === 'completed') fail('This pilot is completed; no further outreach can be prepared.');
     if (openTouch(r)) fail('This record already has an open draft.');
     if (pendingReply(r)) fail('The homeowner replied — handle the reply before any further outreach.');
     const step = nextStep(r, pilot) ?? fail('No further sequence steps for this record.');
@@ -308,7 +335,7 @@ export function prepareDraft(state: WorkbenchState, recordId: string, clock: Clo
 export function editDraft(state: WorkbenchState, touchId: string, text: string, clock: Clock, channel?: Channel): Result {
   return transact(state, clock, (tx) => {
     const { record, touch } = findTouch(tx, touchId);
-    if (touch.status !== 'draft' && touch.status !== 'awaiting_approval') fail(`A ${touch.status.replace('_', ' ')} message cannot be edited.`);
+    if (touch.status !== 'draft' && touch.status !== 'awaiting_approval' && touch.status !== 'approved') fail(`A ${touch.status.replace('_', ' ')} message cannot be edited.`);
     if (!text.trim()) fail('The message cannot be empty.');
     const pilot = getPilot(tx, record.pilotId);
     if (channel && channel !== touch.channel) {
@@ -320,8 +347,13 @@ export function editDraft(state: WorkbenchState, touchId: string, text: string, 
     touch.preparedForVersion = record.version;
     touch.status = 'draft';
     touch.submittedAt = null;
-    tx.log({ type: 'draft_edited', ...ctx(record, tx), from, to: 'draft', detail: `Step ${touch.step} draft edited${from === 'awaiting_approval' ? ' — needs to be resubmitted for approval' : ''}` });
-    return from === 'awaiting_approval' ? 'Draft saved. It must be resubmitted for contractor approval.' : 'Draft saved.';
+    if (from === 'approved') {
+      touch.approvedAt = null;
+      touch.approvedOn = null;
+      tx.log({ type: 'approval_revoked', ...ctx(record, tx), from: 'approved', to: 'draft', detail: `Step ${touch.step} approval revoked for revision` });
+    }
+    tx.log({ type: 'draft_edited', ...ctx(record, tx), from, to: 'draft', detail: `Step ${touch.step} draft edited${from !== 'draft' ? ' — needs contractor approval again' : ''}` });
+    return from === 'draft' ? 'Draft saved.' : 'Draft returned to editing. It needs contractor approval again.';
   });
 }
 
@@ -376,7 +408,7 @@ export function submitForApproval(state: WorkbenchState, touchIds: string[], clo
     'submission',
     (tx, record, touch) => {
       if (touch.status !== 'draft') return [`Status is "${touch.status.replace('_', ' ')}", not draft`];
-      return contactBlockers(tx.s, record, touch.channel).filter((b) => !b.startsWith('Pilot is '));
+      return contactBlockers(tx.s, record, touch.channel).filter((b) => !b.startsWith('Pilot is ') || b.includes('completed'));
     },
     (tx, record, touch) => {
       touch.status = 'awaiting_approval';
@@ -408,6 +440,7 @@ export function approveDrafts(state: WorkbenchState, touchIds: string[], clock: 
     (tx, record, touch) => {
       touch.status = 'approved';
       touch.approvedAt = tx.clock.now;
+      touch.approvedOn = tx.clock.today;
       tx.log({ type: 'draft_approved', ...ctx(record, tx), from: 'awaiting_approval', to: 'approved', detail: `Step ${touch.step} approved by contractor (not sent)` });
     },
   );
@@ -432,9 +465,13 @@ export function confirmContact(state: WorkbenchState, touchId: string, input: Co
     if (!input.confirmed) fail('Confirm that the communication actually took place.');
     if (input.channel !== touch.channel) fail(`This step was approved for ${touch.channel}. A different channel needs a new approved draft.`);
     if (!isIsoDate(input.contactedOn) || input.contactedOn > clock.today) fail('Enter the date the contact happened (not in the future).');
-    if (touch.approvedAt && input.contactedOn < touch.approvedAt.slice(0, 10)) fail('The contact date is before the approval date.');
+    const approvedOn = touch.approvedOn ?? touch.approvedAt?.slice(0, 10);
+    if (approvedOn && input.contactedOn < approvedOn) fail('The contact date is before the approval date.');
     const blockers = contactBlockers(tx.s, record, touch.channel);
     if (blockers.length > 0) fail(`Outreach is blocked: ${blockers.join('; ')}.`);
+    if (touch.preparedForVersion !== record.version) {
+      fail('The record changed after this message was approved. Revise the draft and get it approved again before contacting.');
+    }
     touch.status = 'contacted';
     touch.contactedOn = input.contactedOn;
     touch.confirmedAt = clock.now;
@@ -466,14 +503,17 @@ export function recordResponse(state: WorkbenchState, recordId: string, input: R
   return transact(state, clock, (tx) => {
     const r = getRecord(tx, recordId);
     const last = lastContacted(r) ?? fail('No contact attempt has been recorded for this record.');
-    if (last.outcome !== 'no_response') fail('A response is already recorded for the latest contact attempt.');
     if (r.qualification || r.closed) fail('This record is already resolved.');
+    const reclassify = last.outcome === 'other';
+    if (last.outcome !== 'no_response' && !reclassify) fail('A response is already recorded for the latest contact attempt.');
+    if (reclassify && input.outcome === 'other') fail('Choose a more specific outcome to reclassify this reply.');
     if (!isIsoDate(input.date) || input.date > clock.today) fail('Enter the date of the response (not in the future).');
     if (last.contactedOn && input.date < last.contactedOn) fail('The response date is before the contact date.');
+    const prior = last.outcome!;
     last.outcome = input.outcome;
     last.outcomeRecordedAt = clock.now;
     last.notes = [last.notes, input.notes.trim()].filter(Boolean).join(' | ');
-    tx.log({ type: 'response_recorded', ...ctx(r, tx), from: 'no_response', to: input.outcome, detail: `${OUTCOME_LABELS[input.outcome]} via ${input.channel} on ${input.date}${input.notes.trim() ? ` — ${input.notes.trim()}` : ''}` });
+    tx.log({ type: reclassify ? 'response_reclassified' : 'response_recorded', ...ctx(r, tx), from: prior, to: input.outcome, detail: `${OUTCOME_LABELS[input.outcome]} via ${input.channel} on ${input.date}${input.notes.trim() ? ` — ${input.notes.trim()}` : ''}` });
     cancelOpenTouches(tx, r, 'Homeowner responded');
     return applyOutcome(tx, r, input.outcome, input.channel, input.date);
   });
@@ -514,7 +554,9 @@ export function qualifyReengagement(state: WorkbenchState, recordId: string, inp
   return transact(state, clock, (tx) => {
     const r = getRecord(tx, recordId);
     if (r.qualification) fail('Already recorded as a qualified re-engagement.');
-    if (!pendingReply(r)) fail('Only a homeowner reply awaiting review can be qualified.');
+    if (isRestricted(r)) fail(`This record is ${ELIGIBILITY_SHORT[r.eligibility.status].toLowerCase()}; a reply cannot be qualified until the restriction is reviewed.`);
+    const reply = pendingReply(r) ?? fail('Only a homeowner reply awaiting review can be qualified.');
+    if (!POSITIVE_OUTCOMES.has(reply.outcome!)) fail('Only a positive reply (interested, callback, inspection or revised estimate) can be qualified. Reclassify an "Other" reply first.');
     if (!input.confirmed) fail('Confirm the homeowner said the project is unresolved and asked for a next step.');
     r.qualification = { at: clock.now, request: input.request, notes: input.notes.trim() };
     r.updatedAt = clock.now;
@@ -550,6 +592,7 @@ export function createHandoff(state: WorkbenchState, recordId: string, input: Ha
   return transact(state, clock, (tx) => {
     const r = getRecord(tx, recordId);
     if (r.handoff) fail('A handoff already exists for this record.');
+    if (isRestricted(r)) fail(`This record is ${ELIGIBILITY_SHORT[r.eligibility.status].toLowerCase()}; no handoff can be created.`);
     const q = r.qualification ?? fail('Record a qualified re-engagement before creating a handoff.');
     if (!isIsoDate(input.respondedOn) || input.respondedOn > clock.today) fail('Enter the date the homeowner responded.');
     if (!input.homeownerRequest.trim()) fail('Describe what the homeowner requested.');
@@ -581,8 +624,9 @@ export function markHandoffNotified(state: WorkbenchState, recordId: string, dat
     const r = getRecord(tx, recordId);
     const h = r.handoff ?? fail('No handoff for this record.');
     if (h.notifiedOn) fail('Contractor notification already recorded.');
+    if (isRestricted(r)) fail(`This record is ${ELIGIBILITY_SHORT[r.eligibility.status].toLowerCase()}; do not pass it to the contractor.`);
     if (!isIsoDate(date) || date > clock.today) fail('Enter the date the contractor was notified.');
-    if (date < h.createdAt.slice(0, 10)) fail('Notification date is before the handoff was created.');
+    if (date < h.respondedOn) fail('Notification date is before the homeowner responded.');
     h.notifiedOn = date;
     tx.log({ type: 'handoff_notified', ...ctx(r, tx), from: 'created', to: 'notified', detail: `Contractor notified on ${date}` });
     return 'Contractor notification recorded.';
@@ -630,5 +674,24 @@ export function recordHandoffOutcome(state: WorkbenchState, recordId: string, in
     h.reportedJobValue = input.outcome === 'job_won_verified' ? input.jobValue : null;
     tx.log({ type: 'handoff_outcome', ...ctx(r, tx), from, to: input.outcome, detail: `${HANDOFF_OUTCOME_LABELS[input.outcome]} (${input.date})${input.notes.trim() ? ` — ${input.notes.trim()}` : ''}` });
     return 'Contractor-reported outcome recorded.';
+  });
+}
+
+/* ---------------------------------------------------------- suppression ledger */
+
+/**
+ * Lift one contractor-level ledger entry after review. Records that are already
+ * suppressed stay suppressed; each needs its own restriction review.
+ */
+export function reverseLedgerEntry(state: WorkbenchState, entryId: string, reason: string, clock: Clock): Result {
+  return transact(state, clock, (tx) => {
+    const e = tx.s.suppression.find((x) => x.id === entryId) ?? fail('Ledger entry not found.');
+    if (!e.active) fail('This ledger entry is already lifted.');
+    if (reason.trim().length < 10) fail('Explain the reason for lifting this entry (at least 10 characters).');
+    e.active = false;
+    e.reversedAt = clock.now;
+    e.reversalReason = reason.trim();
+    tx.log({ type: 'suppression_ledger_reversed', contractorId: e.contractorId, pilotId: e.pilotId, recordId: e.recordId, from: 'active', to: 'lifted', detail: reason.trim() });
+    return 'Ledger entry lifted. Records that are suppressed stay suppressed until each is reviewed.';
   });
 }

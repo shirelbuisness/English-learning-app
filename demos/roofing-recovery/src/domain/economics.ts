@@ -27,7 +27,7 @@ export function deleteTimeEntry(state: WorkbenchState, entryId: string, clock: C
   return transact(state, clock, (tx) => {
     const e = tx.s.timeEntries.find((x) => x.id === entryId) ?? fail('Time entry not found.');
     tx.s.timeEntries = tx.s.timeEntries.filter((x) => x.id !== entryId);
-    tx.log({ type: 'time_deleted', pilotId: e.pilotId, detail: `Removed ${e.minutes} min ${TIME_CATEGORY_LABELS[e.category]} on ${e.date}` });
+    tx.log({ type: 'time_deleted', pilotId: e.pilotId, contractorId: tx.s.pilots.find((p) => p.id === e.pilotId)?.contractorId ?? null, detail: `Removed ${e.minutes} min ${TIME_CATEGORY_LABELS[e.category]} on ${e.date}` });
     return 'Time entry removed.';
   });
 }
@@ -48,7 +48,7 @@ export function deleteExpense(state: WorkbenchState, expenseId: string, clock: C
   return transact(state, clock, (tx) => {
     const e = tx.s.expenses.find((x) => x.id === expenseId) ?? fail('Expense not found.');
     tx.s.expenses = tx.s.expenses.filter((x) => x.id !== expenseId);
-    tx.log({ type: 'expense_deleted', pilotId: e.pilotId, detail: `Removed ${e.description} ($${e.amount})` });
+    tx.log({ type: 'expense_deleted', pilotId: e.pilotId, contractorId: tx.s.pilots.find((p) => p.id === e.pilotId)?.contractorId ?? null, detail: `Removed ${e.description} ($${e.amount})` });
     return 'Expense removed.';
   });
 }

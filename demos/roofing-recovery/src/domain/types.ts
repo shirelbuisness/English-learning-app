@@ -158,6 +158,8 @@ export interface Touch {
   status: TouchStatus;
   submittedAt: Timestamp | null;
   approvedAt: Timestamp | null;
+  /** Operator's local calendar day of the approval (date comparisons use local days, not UTC). */
+  approvedOn?: IsoDate | null;
   blockedReason: string | null;
   /** Date the operator confirms the communication actually happened. */
   contactedOn: IsoDate | null;

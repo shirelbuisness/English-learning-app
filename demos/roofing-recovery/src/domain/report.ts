@@ -109,6 +109,21 @@ export function pilotReport(state: WorkbenchState, pilotId: string, today: IsoDa
         qualified: inBand.filter((r) => r.qualification).length,
       };
     }),
+    /**
+     * A partition of the imported records that always sums to `imported`:
+     * every record is counted once, by whether it was ever cleared for follow-up.
+     */
+    reviewOutcome: (() => {
+      const never = records.filter((r) => r.eligibility.status !== 'eligible' && !everEligibleIds.has(r.id));
+      return {
+        clearedForFollowUp: eligibleEver,
+        excludedByContractor: never.filter((r) => r.eligibility.status === 'excluded').length,
+        doNotContact: never.filter((r) => r.eligibility.status === 'suppressed').length,
+        notContactable: never.filter((r) => r.eligibility.status === 'pending_review' || r.eligibility.status === 'ineligible').length,
+        // Of the cleared records, how many were later restricted or closed.
+        laterOptedOutOrRestricted: records.filter((r) => everEligibleIds.has(r.id) && (r.eligibility.status === 'suppressed' || r.eligibility.status === 'excluded')).length,
+      };
+    })(),
     economics: {
       measuredMinutes,
       estimatedMinutes,
@@ -128,3 +143,11 @@ export function pilotReport(state: WorkbenchState, pilotId: string, today: IsoDa
 }
 
 export type PilotReport = ReturnType<typeof pilotReport>;
+
+/** Warm handoffs for the contractor-facing report, oldest first. */
+export function handoffList(state: WorkbenchState, pilotId: string) {
+  return state.records
+    .filter((r) => r.pilotId === pilotId && r.handoff)
+    .map((r) => ({ recordId: r.id, name: r.customerName, city: r.city, service: r.service, estimateAmount: r.estimateAmount, handoff: r.handoff! }))
+    .sort((a, b) => a.handoff.respondedOn.localeCompare(b.handoff.respondedOn));
+}

@@ -22,6 +22,12 @@ npx vite build --config demos/roofing-recovery/vite.config.ts # static build →
 
 The app opens on a populated synthetic demonstration pilot. Its dates are relative to today, so lead ages and due dates look realistic.
 
+## Sales and pilot documents
+
+- **Report → Contractor report (print / PDF):** the contractor-facing pilot report. It contains no internal costs, rate or margin, and demo pilots are labelled illustrative. Use the browser's "Save as PDF" to email it.
+- [`docs/pilot-one-pager.md`](docs/pilot-one-pager.md): a contractor-facing description of the pilot, with placeholders for terms and price.
+- [`docs/demo-script.md`](docs/demo-script.md): an internal two-minute demo, honest answers to likely objections, and the onboarding checklist for a first paid pilot.
+
 ## Daily workflow
 
 1. **Contractors & pilots.** Create the contractor, then a pilot with:

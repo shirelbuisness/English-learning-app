@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { buildQueue } from '../domain/queue.ts';
 import { PILOT_STATUS_LABELS } from '../domain/types.ts';
 import { DataPage } from './DataPage.tsx';
+import { ContractorReportPage } from './ContractorReportPage.tsx';
 import { ImportPage } from './ImportPage.tsx';
 import { QueuePage } from './QueuePage.tsx';
 import { RecordPage } from './RecordPage.tsx';
@@ -11,7 +12,7 @@ import { SetupPage } from './SetupPage.tsx';
 import { cx } from './shared.tsx';
 import { now, useWorkbench } from './useWorkbench.ts';
 
-export type Route = { page: 'queue' | 'records' | 'record' | 'import' | 'report' | 'setup' | 'data'; id?: string };
+export type Route = { page: 'queue' | 'records' | 'record' | 'import' | 'report' | 'print' | 'setup' | 'data'; id?: string };
 const PAGES: { page: Route['page']; label: string }[] = [
   { page: 'queue', label: 'Queue' },
   { page: 'records', label: 'Records' },
@@ -24,6 +25,7 @@ const PAGES: { page: Route['page']; label: string }[] = [
 function parse(hash: string): Route {
   const [page, id] = hash.replace(/^#\/?/, '').split('/');
   if (page === 'record' && id) return { page: 'record', id: decodeURIComponent(id) };
+  if (page === 'print') return { page: 'print' };
   return PAGES.some((p) => p.page === page) ? { page: page as Route['page'] } : { page: 'queue' };
 }
 export const href = (r: Route) => `#/${r.page}${r.id ? `/${encodeURIComponent(r.id)}` : ''}`;
@@ -76,7 +78,7 @@ export function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="border-b border-slate-200 bg-white print:hidden">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
           <div className="flex items-center gap-2.5">
             <div aria-hidden className="grid size-8 place-items-center rounded bg-navy-900 text-white">
@@ -93,7 +95,7 @@ export function App() {
           </div>
           <nav aria-label="Main" className="order-3 -mx-1 flex w-full gap-0.5 overflow-x-auto md:order-none md:w-auto">
             {PAGES.map((p) => {
-              const active = route.page === p.page || (route.page === 'record' && p.page === 'records');
+              const active = route.page === p.page || (route.page === 'record' && p.page === 'records') || (route.page === 'print' && p.page === 'report');
               return (
                 <a key={p.page} href={href({ page: p.page })} aria-current={active ? 'page' : undefined} className={cx('rounded px-2.5 py-1.5 text-sm font-medium whitespace-nowrap', active ? 'bg-navy-50 text-navy-900' : 'text-slate-600 hover:bg-slate-50 hover:text-navy-900')}>
                   {p.label}
@@ -131,7 +133,7 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-4 py-5">
+      <main className="mx-auto max-w-[1400px] px-4 py-5 print:p-0">
         {route.page === 'queue' && <QueuePage wb={wb} go={go} />}
         {route.page === 'records' && <RecordsPage wb={wb} pilot={pilot} go={go} />}
         {route.page === 'record' &&
@@ -144,11 +146,12 @@ export function App() {
           ))}
         {route.page === 'import' && <ImportPage wb={wb} pilot={pilot} go={go} />}
         {route.page === 'report' && <ReportPage wb={wb} pilot={pilot} />}
+        {route.page === 'print' && <ContractorReportPage wb={wb} pilot={pilot} />}
         {route.page === 'setup' && <SetupPage wb={wb} pilot={pilot} onSelectPilot={setPilotId} />}
         {route.page === 'data' && <DataPage wb={wb} pilot={pilot} onSelectPilot={setPilotId} />}
       </main>
 
-      <footer className="mx-auto max-w-[1400px] px-4 pb-6 text-xs text-slate-500">
+      <footer className="mx-auto max-w-[1400px] px-4 pb-6 text-xs text-slate-500 print:hidden">
         {pilot ? `${contractorName(pilot.contractorId)} · ${pilot.name}` : 'No pilot selected'} · data stored in this browser only (unencrypted)
       </footer>
 
@@ -157,7 +160,7 @@ export function App() {
           key={wb.notice.id}
           role={wb.notice.kind === 'error' ? 'alert' : 'status'}
           className={cx(
-            'fixed bottom-4 end-4 start-4 z-20 mx-auto max-w-lg rounded-md px-4 py-3 text-sm shadow-lg sm:start-auto',
+            'fixed bottom-4 end-4 start-4 z-20 print:hidden mx-auto max-w-lg rounded-md px-4 py-3 text-sm shadow-lg sm:start-auto',
             wb.notice.kind === 'error' ? 'bg-red-800 text-white' : wb.notice.kind === 'warning' ? 'bg-amber-100 text-amber-950 ring-1 ring-amber-300' : 'bg-navy-900 text-white',
           )}
         >

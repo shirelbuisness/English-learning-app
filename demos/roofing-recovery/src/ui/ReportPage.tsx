@@ -30,6 +30,7 @@ export function ReportPage({ wb, pilot }: { wb: Workbench; pilot: Pilot | null }
           <p className="text-sm text-slate-500">{contractor?.businessName} · {formatDate(pilot.startDate)} – {formatDate(pilot.endDate)} · as of {formatDate(today)}. Every figure is computed from recorded records, contacts, handoffs and time entries.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <a href="#/print" className="rounded-md bg-navy-800 px-3.5 py-2 text-sm font-medium text-white hover:bg-navy-900">Contractor report (print / PDF)</a>
           <Button onClick={() => exp('pilot report', 'report', reportCsv(report))}>Export report CSV</Button>
           <Button onClick={() => exp('record list', 'records', recordsCsv(state, pilot.id, today))}>Records CSV</Button>
           <Button onClick={() => exp('activity log', 'activity-log', eventsCsv(state, pilot.id))}>Activity log CSV</Button>

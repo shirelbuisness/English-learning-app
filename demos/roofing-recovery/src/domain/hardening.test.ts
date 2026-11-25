@@ -261,3 +261,25 @@ function csvBlank(): string {
 function commitImportText(s: WorkbenchState, pilotId: string, text: string) {
   return commitImport(s, pilotId, text, 'partial.csv', { 2: 'update' }, clock);
 }
+
+describe('contractor report breakdown', () => {
+  it('review outcome partitions the imported records exactly', () => {
+    const s = withDemoData(emptyState(), TODAY);
+    for (const p of s.pilots) {
+      const r = pilotReport(s, p.id, TODAY);
+      const o = r.reviewOutcome;
+      expect(o.clearedForFollowUp + o.excludedByContractor + o.doNotContact + o.notContactable).toBe(r.dataQuality.imported);
+      expect(o.laterOptedOutOrRestricted).toBeLessThanOrEqual(o.clearedForFollowUp);
+    }
+  });
+
+  it('handoff list is limited to the pilot and ordered by response date', async () => {
+    const { handoffList } = await import('./report.ts');
+    const s = withDemoData(emptyState(), TODAY);
+    const pid = s.pilots[0]!.id;
+    const list = handoffList(s, pid);
+    expect(list.length).toBe(pilotReport(s, pid, TODAY).outcomes.handoffs);
+    expect(list.map((h) => h.handoff.respondedOn)).toEqual([...list.map((h) => h.handoff.respondedOn)].sort());
+    expect(handoffList(s, s.pilots[1]!.id)).toEqual([]);
+  });
+});

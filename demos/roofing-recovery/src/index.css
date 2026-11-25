@@ -20,3 +20,12 @@ body {
   background: var(--color-canvas);
   color: #1c2430;
 }
+
+@media print {
+  body {
+    background: #fff;
+  }
+  @page {
+    margin: 16mm;
+  }
+}

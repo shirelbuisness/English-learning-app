@@ -1,7 +1,7 @@
 import { toCsv } from '../domain/csv.ts';
 import { addDays, clockAt } from '../domain/dates.ts';
 import { addExpense, addTimeEntry } from '../domain/economics.ts';
-import { commitImport, TEMPLATE_COLUMNS } from '../domain/importer.ts';
+import { commitImport } from '../domain/importer.ts';
 import { stripDemo } from '../domain/lifecycle.ts';
 import {
   acknowledgeHandoff,
@@ -90,9 +90,33 @@ const MAIN_ROWS: Row[] = [
   ['Natalie Price', 'natalie.price@example.com', '512-555-0133', 36, '7600', 'Roof repair', 'Kyle', 'open', 33, '0', 'Facebook', 'maybe', '', '', FORM, '', 'no', 'no'],
 ];
 
+/** Column order of the Row tuples above (a subset of the full import template). */
+const SEED_COLUMNS = [
+  'customer_name',
+  'customer_email',
+  'customer_phone',
+  'estimate_date',
+  'estimate_amount',
+  'service_requested',
+  'property_city',
+  'property_state',
+  'estimate_status',
+  'last_contact_date',
+  'previous_follow_up_count',
+  'inquiry_source',
+  'contact_info_source',
+  'email_consent',
+  'phone_consent',
+  'sms_consent',
+  'authorization_evidence',
+  'communication_preferences',
+  'prior_opt_out',
+  'contractor_exclude',
+] as const;
+
 function rowsToCsv(rows: Row[], importDate: IsoDate): string {
   return toCsv(
-    TEMPLATE_COLUMNS,
+    SEED_COLUMNS,
     rows.map((r) => {
       const [name, email, phone, age, amount, service, city, status, last, fu, source, ec, pc, sc, ev, prefs, opt, exc] = r;
       const estimateDate = typeof age === 'number' ? addDays(importDate, -age) : age;
@@ -117,7 +141,7 @@ export function withDemoData(base: WorkbenchState, today: IsoDate): WorkbenchSta
   act(createContractor(s, { businessName: 'Hill Country Roofing (demo)', primaryContact: 'Dale Mercer', email: 'office@hillcountry-roofing.example.com', phone: '(512) 555-0142', timeZone: 'America/Chicago', notes: 'Fictional demonstration contractor. Owner-operator, 2 crews, Central Texas.' }, day(-16), true));
   const hc = s.contractors.at(-1)!.id;
   act(createPilot(s, hc, {
-    ...defaultPilotInput(today),
+    ...defaultPilotInput(today), contactMode: 'in_workbench',
     name: DEMO_PILOT_NAME,
     startDate: addDays(today, -14),
     endDate: addDays(today, 16),
@@ -237,7 +261,7 @@ export function withDemoData(base: WorkbenchState, today: IsoDate): WorkbenchSta
   // Day -1: a second contractor with a pilot still in setup (shows pilot isolation).
   act(createContractor(s, { businessName: 'Gulf Coast Exteriors (demo)', primaryContact: 'Ana Villarreal', email: 'ana@gulfcoast-exteriors.example.com', phone: '(361) 555-0177', timeZone: 'America/Chicago', notes: 'Fictional demonstration contractor. Onboarding.' }, day(-1), true));
   const gc = s.contractors.at(-1)!.id;
-  act(createPilot(s, gc, { ...defaultPilotInput(today), name: 'Pilot 1 — Gulf Coast (demo, setup)', startDate: addDays(today, 3), endDate: addDays(today, 33), recordLimit: 30, notes: 'Waiting for signed pilot terms.' }, day(-1)));
+  act(createPilot(s, gc, { ...defaultPilotInput(today), contactMode: 'in_workbench', name: 'Pilot 1 — Gulf Coast (demo, setup)', startDate: addDays(today, 3), endDate: addDays(today, 33), recordLimit: 30, notes: 'Waiting for signed pilot terms.' }, day(-1)));
   const gcPilot = s.pilots.at(-1)!.id;
   const gcRows: Row[] = [
     ['Luis Herrera', 'luis.herrera@example.com', '361-555-0201', 25, '16700', 'Hurricane strap retrofit and re-roof', 'Corpus Christi', 'open', 22, '0', 'Website form', 'yes', 'unknown', '', FORM, '', 'no', 'no'],

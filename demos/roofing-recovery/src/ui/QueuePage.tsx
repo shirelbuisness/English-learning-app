@@ -3,16 +3,50 @@ import { formatShortDate, formatUsd } from '../domain/dates.ts';
 import { PRIORITY_LABELS, type PriorityCategory } from '../domain/priority.ts';
 import { buildQueue, QUEUE_GROUPS, type QueueFilter } from '../domain/queue.ts';
 import { approveDrafts, submitForApproval, type BatchOutcome } from '../domain/records.ts';
+import { approvalBatch, warmLeadCard, type ApprovalBatch } from '../domain/touchpoints.ts';
+import type { Pilot } from '../domain/types.ts';
+import { CopyPanel } from './CopyPanel.tsx';
 import { href, type Route } from './App.tsx';
 import { Button, Callout, cx, Empty, inputClass, PriorityBadge, td, th } from './shared.tsx';
 import { now, type Workbench } from './useWorkbench.ts';
 
-export function QueuePage({ wb, go }: { wb: Workbench; go: (r: Route) => void }) {
+export function QueuePage({ wb, go, pilot }: { wb: Workbench; go: (r: Route) => void; pilot: Pilot | null }) {
   const { state } = wb;
   const today = now().today;
   const [filter, setFilter] = useState<QueueFilter>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batch, setBatch] = useState<{ verb: string; outcome: BatchOutcome } | null>(null);
+  const [approval, setApproval] = useState<ApprovalBatch | null>(null);
+  const [handoff, setHandoff] = useState<{ name: string; text: string } | null>(null);
+  const batchPilot = filter.pilotId ? state.pilots.find((p) => p.id === filter.pilotId) ?? null : pilot;
+  const pendingDrafts = batchPilot ? approvalBatch(state, batchPilot.id).items.length : 0;
+
+  const openApproval = () => {
+    if (!batchPilot) return;
+    const b = approvalBatch(state, batchPilot.id);
+    if (b.items.length === 0) return wb.notify('error', 'No prepared drafts to send for approval in this pilot.');
+    setHandoff(null);
+    setApproval(b);
+  };
+  const ids = (b: ApprovalBatch) => b.items.map((i) => i.touchId);
+  /** Copying the batch is sending it to the contractor: record that, then their "Approved". Each draft is revalidated. */
+  const markSent = (b: ApprovalBatch) => {
+    const drafts = b.items.filter((i) => i.status === 'draft').map((i) => i.touchId);
+    if (drafts.length === 0) return wb.notify('success', 'Already marked as sent for approval.');
+    const r = wb.run((s, c) => submitForApproval(s, drafts, c));
+    if (r.ok && r.batch) setBatch({ verb: 'sent for approval', outcome: r.batch });
+    if (r.ok) setApproval({ ...b, items: b.items.map((i) => ({ ...i, status: 'awaiting_approval' as const })) });
+  };
+  const recordApproved = (b: ApprovalBatch) => {
+    const drafts = b.items.filter((i) => i.status === 'draft').map((i) => i.touchId);
+    if (drafts.length > 0) {
+      const sub = wb.run((s, c) => submitForApproval(s, drafts, c), { quiet: true });
+      if (!sub.ok) return;
+    }
+    const r = wb.run((s, c) => approveDrafts(s, ids(b), c));
+    if (r.ok && r.batch) setBatch({ verb: 'approved', outcome: r.batch });
+    setApproval(null);
+  };
 
   const all = useMemo(() => buildQueue(state, today, { contractorId: filter.contractorId, pilotId: filter.pilotId }), [state, today, filter.contractorId, filter.pilotId]);
   const items = useMemo(() => buildQueue(state, today, filter), [state, today, filter]);
@@ -48,6 +82,31 @@ export function QueuePage({ wb, go }: { wb: Workbench; go: (r: Route) => void })
           <p className="text-sm text-slate-500">One list, in working order. Work from the top; open a record to act on it.</p>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-navy-100 bg-navy-50 px-3 py-2.5">
+        <span className="me-auto text-sm text-navy-900">
+          <strong>Contractor touchpoints</strong> · no login needed: paste into a text or email.
+          {batchPilot && <span className="text-slate-600"> {pendingDrafts} draft{pendingDrafts === 1 ? '' : 's'} ready for approval in {batchPilot.name}.</span>}
+        </span>
+        <Button variant="primary" disabled={!batchPilot || pendingDrafts === 0} onClick={openApproval}>Copy approval batch</Button>
+      </div>
+
+      {approval && (
+        <CopyPanel
+          title={`Approval batch · ${approval.items.length} message${approval.items.length === 1 ? '' : 's'}`}
+          text={approval.text}
+          hint="Paste into a text or email to the contractor. Nothing is approved until you record their reply below."
+          onClose={() => setApproval(null)}
+        >
+          <Button onClick={() => markSent(approval)}>Mark as sent to contractor</Button>
+          <Button variant="confirm" onClick={() => recordApproved(approval)}>Contractor replied “Approved” — approve all {approval.items.length}</Button>
+          <span className="text-xs text-slate-500">If they approved only some, close this and select those rows below instead. Every message is re-checked before approval.</span>
+        </CopyPanel>
+      )}
+
+      {handoff && (
+        <CopyPanel title={`Warm lead handoff · ${handoff.name}`} text={handoff.text} hint="Text this straight to the contractor's phone." onClose={() => setHandoff(null)} />
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {QUEUE_GROUPS.map((g) => {
@@ -184,7 +243,7 @@ export function QueuePage({ wb, go }: { wb: Workbench; go: (r: Route) => void })
                           </td>
                           <td className={td}>
                             <a href={href({ page: 'record', id: r.id })} className="font-medium text-navy-900 hover:underline">{r.customerName}</a>
-                            <div className="text-xs text-slate-500">{r.city}{multiPilot && ` · ${pilotName(r.pilotId)}`}</div>
+                            <div className="text-xs text-slate-500">{[r.estimateRef, r.city, r.notes].filter(Boolean).join(' · ')}{multiPilot && ` · ${pilotName(r.pilotId)}`}</div>
                           </td>
                           <td className={td}>
                             <div className="font-medium text-slate-800">{i.label}</div>
@@ -196,7 +255,10 @@ export function QueuePage({ wb, go }: { wb: Workbench; go: (r: Route) => void })
                             {overdue && <span className="block text-[11px]">overdue</span>}
                           </td>
                           <td className={td}>{i.group <= 3 && <PriorityBadge p={i.priority} />}</td>
-                          <td className={cx(td, 'text-end')}>
+                          <td className={cx(td, 'text-end whitespace-nowrap')}>
+                            {i.group >= 4 && warmLeadCard(state, r.id, today) && (
+                              <Button size="sm" variant="ghost" onClick={() => { setApproval(null); setHandoff({ name: r.customerName, text: warmLeadCard(state, r.id, today)! }); window.scrollTo({ top: 0 }); }}>Copy handoff</Button>
+                            )}{' '}
                             <Button size="sm" variant={i.group === 1 ? 'secondary' : 'primary'} onClick={() => go({ page: 'record', id: r.id })}>Open</Button>
                           </td>
                         </tr>

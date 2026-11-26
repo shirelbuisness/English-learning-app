@@ -20,7 +20,7 @@ export function RecordsPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | n
     if (!pilot) return [];
     return state.records
       .filter((r) => r.pilotId === pilot.id)
-      .map((r) => ({ r, p: prioritize(state, r, today), w: workflowStatus(state, r), issues: dataIssues(r, today) }))
+      .map((r) => ({ r, p: prioritize(state, r, today), w: workflowStatus(state, r), issues: dataIssues(r, today, pilot.contactMode) }))
       .sort((a, b) => PRIORITY_ORDER[a.p.category] - PRIORITY_ORDER[b.p.category] || b.r.estimateAmount - a.r.estimateAmount);
   }, [state, pilot, today]);
 
@@ -31,7 +31,7 @@ export function RecordsPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | n
     if (prio && p.category !== prio) return false;
     if (elig && r.eligibility.status !== elig) return false;
     if (wf && w !== wf) return false;
-    return !needle || [r.customerName, r.email ?? '', r.phone ?? '', r.city, r.service, r.id].some((v) => v.toLowerCase().includes(needle));
+    return !needle || [r.customerName, r.estimateRef ?? '', r.notes, r.email ?? '', r.phone ?? '', r.city, r.service, r.id].some((v) => v.toLowerCase().includes(needle));
   });
   const count = (s: EligibilityStatus) => rows.filter((x) => x.r.eligibility.status === s).length;
 
@@ -50,7 +50,7 @@ export function RecordsPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | n
       <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3">
         <label className="min-w-56 flex-1 text-xs text-slate-600">
           Search
-          <input type="search" className={cx(inputClass, 'mt-1')} placeholder="Name, email, phone, city, service" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input type="search" className={cx(inputClass, 'mt-1')} placeholder="Name, estimate ID, notes, city, service" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
         <label className="text-xs text-slate-600">
           Priority
@@ -100,7 +100,8 @@ export function RecordsPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | n
                   <tr key={r.id} className="cursor-pointer hover:bg-slate-50" onClick={() => go({ page: 'record', id: r.id })}>
                     <td className={td}>
                       <a href={href({ page: 'record', id: r.id })} onClick={(e) => e.stopPropagation()} className="font-medium text-navy-900 hover:underline">{r.customerName}</a>
-                      <div className="text-xs text-slate-500">{r.city}{r.state ? `, ${r.state}` : ''} · {r.service || '—'}</div>
+                      <div className="text-xs text-slate-500">{[r.estimateRef, r.city && `${r.city}${r.state ? `, ${r.state}` : ''}`, r.service || '—'].filter(Boolean).join(' · ')}</div>
+                      {r.notes && <div className="text-xs text-slate-600 italic">“{r.notes}”</div>}
                     </td>
                     <td className={cx(td, 'text-end tabular-nums')}>
                       {formatUsd(r.estimateAmount)}

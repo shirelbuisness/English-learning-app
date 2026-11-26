@@ -1,71 +1,90 @@
-# Lead Recovery Workbench (internal prototype)
+# Estimate Recovery Workbench
 
-This is an internal operator tool for delivering a managed unsold-estimate recovery service to independent roofing contractors. It is sized for one operator and a first paid pilot of about 25–40 estimates.
+The operator workbench behind a **done-for-you Estimate Recovery Service** for residential roofers. The contractor hands over 25 stale quotes. I draft personal, low-pressure follow-ups. The contractor approves them with a one-word text. The approved messages go out from the contractor's own inbox or phone. I hand back homeowners who want to talk.
 
-It is **not** a contractor portal, a CRM, a SaaS product or an outreach engine. **It never sends anything.** Emails and calls happen outside the tool. The operator then records here, with an explicit confirmation, what actually happened.
+It is **not** a contractor dashboard, a CRM or an outreach engine. **It never sends anything.** Messages go out from the contractor's systems. The workbench tracks the work, enforces the rules and prepares the text to paste.
 
-> **Status: synthetic data only.** This prototype is not approved for real contractor or homeowner data. See [Before real data](#before-real-data-can-be-used).
+> **Data status.** Use **privacy-safe pilots** for real work: they hold only an estimate ID, first name, roof scope, quote amount, age and notes. Phone numbers, emails and addresses stay in the contractor's CRM or inbox. Browser storage is still unencrypted, so read [Before real data](#before-real-data-can-be-used) before the first paid pilot. Nothing here is legal advice.
 
-This folder is self-contained. It reuses the repository's installed packages (React, TypeScript, Tailwind 4, Vite, Vitest) and adds no new ones. The English-learning app in the repository root is not affected, and its build, typecheck and tests do not include this folder.
+See [`CLAUDE.md`](CLAUDE.md) for the service rules and the AI drafting prompts.
 
 ## Run it
 
-From the repository root:
+Needs Node.js 20.19 or later.
 
 ```bash
-npm ci                                                        # once
-npx vite --config demos/roofing-recovery/vite.config.ts       # → http://localhost:5173
-npx tsc -p demos/roofing-recovery                             # typecheck
-npx vitest run --config demos/roofing-recovery/vite.config.ts # tests
-npx vite build --config demos/roofing-recovery/vite.config.ts # static build → demos/roofing-recovery/dist
+npm ci          # once, installs from the committed lockfile
+npm run dev     # → http://localhost:5173
+npm test        # unit tests
+npm run build   # typecheck + production build → dist/
 ```
 
-The app opens on a populated synthetic demonstration pilot. Its dates are relative to today, so lead ages and due dates look realistic.
+The app opens on a **sample roofing pipeline**: 10 fictional estimates covering every stage. Header buttons:
+- **Load sample pipeline** replaces all demo data with a fresh sample.
+- **Clear / start real pilot** removes all demo data and opens setup.
 
-## Sales and pilot documents
+Real pilots you create are never touched by either.
 
-- **Report → Contractor report (print / PDF):** the contractor-facing pilot report. It contains no internal costs, rate or margin, and demo pilots are labelled illustrative. Use the browser's "Save as PDF" to email it.
-- [`docs/pilot-one-pager.md`](docs/pilot-one-pager.md): a contractor-facing description of the pilot, with placeholders for terms and price.
-- [`docs/demo-script.md`](docs/demo-script.md): an internal two-minute demo, honest answers to likely objections, and the onboarding checklist for a first paid pilot.
+## Moving this folder into its own repository
 
-## Daily workflow
+This folder is self-contained: its own `package.json`, lockfile, TypeScript/Vite config, `.gitignore` and `CLAUDE.md`. It doesn't depend on anything else in the English-learning-app repository. To give it its own repository **with its history**:
 
-1. **Contractors & pilots.** Create the contractor, then a pilot with:
-   - dates and the agreed record limit;
-   - approved channels;
-   - the approved communication policy and templates;
-   - the Day 1 / 4 / 9 sequence guidance.
+```bash
+# 1. In the current repository, split the folder's history onto its own branch.
+cd English-learning-app
+git checkout claude/beautiful-planck-w5j644
+git subtree split --prefix=demos/roofing-recovery -b estimate-recovery-export
 
-   Activate the pilot once the policy is recorded.
-2. **Import.** Download the template and upload a CSV. You then see a row-by-row preview with:
-   - normalised email and phone, and validation errors and warnings;
-   - duplicate, conflict and in-file-duplicate detection;
-   - suppression-ledger matches.
+# 2. Create an EMPTY repository on GitHub (no README, licence or .gitignore), e.g.
+#    github.com/<you>/estimate-recovery-workbench, then push the split branch to it.
+git push git@github.com:<you>/estimate-recovery-workbench.git estimate-recovery-export:main
 
-   Choose import, exclude, skip or update for each row, then commit.
-3. **Queue.** One prioritised list, in working order:
-   1. records requiring review;
-   2. drafts and contractor approvals;
-   3. approved follow-ups that are due;
-   4. homeowner replies;
-   5. warm handoffs.
+# 3. Clone the new repository and check that it builds and tests on its own.
+cd ..
+git clone git@github.com:<you>/estimate-recovery-workbench.git
+cd estimate-recovery-workbench
+npm ci && npm test && npm run build
 
-   Filters: contractor, pilot, priority, follow-up date and group.
-4. **Record page.** Everything about one estimate:
-   - eligibility evidence and decisions;
-   - exclusion, suppression and restriction review;
-   - the draft editor;
-   - recording contractor approval;
-   - confirmed contact with its outcome;
-   - qualification of a reply, and the handoff (created → notified → acknowledged → outcome);
-   - full history.
-5. **Batch approval** in the queue. Select drafts and either mark them sent to the contractor or record the contractor's approval. Each draft is revalidated on its own, and blocked ones are listed with the reason.
-6. **Report.** Data quality, activity, the outcome ladder, results by estimate-age band, time tracking, expenses and economics, plus CSV exports.
-7. **Data.** Pilot export (JSON), clearing a pilot, resetting the demo, the suppression ledger and the activity log.
+# 4. Only after step 3 passes: remove the copy from the English-learning repository.
+cd ../English-learning-app
+git branch -D estimate-recovery-export
+git rm -r demos/roofing-recovery
+git commit -m "Move estimate recovery workbench to its own repository"
+```
+
+If you'd rather start the new repository without history, copy the folder (excluding `node_modules` and `dist`) and run `git init && git add . && git commit -m "Initial import"`.
+
+## The 3-minute demo
+
+1. **Queue:** "This is my day: one list, top to bottom."
+2. **Copy approval batch:** paste it into a text to yourself and show the contractor what they'd get: numbered messages, reply "Approved". Click "Contractor replied Approved". Four drafts are approved, and the queue shows them due for sending.
+3. **Sarah (Q-2231):** a real-sounding reply. Click **Copy handoff** and show the warm-lead text the contractor gets on their phone.
+4. **Report → Contractor report:** what they get at the end.
+5. **Linda or Tom:** opt-outs and exclusions are respected, permanently and across pilots.
+
+[`docs/demo-script.md`](docs/demo-script.md) has the talk track and objection answers. [`docs/pilot-one-pager.md`](docs/pilot-one-pager.md) and [`docs/pilot-agreement-summary.md`](docs/pilot-agreement-summary.md) are the offer documents.
+
+## Daily workflow (real pilot)
+
+1. **Contractors & pilots:** create the contractor and a pilot. Choose **privacy-safe** (recommended), and record what the contractor confirmed about contact permission (the *attestation*). The pilot can't be activated without it.
+2. **Import:** load the contractor's quote export (CSV), or a sheet you typed from their CRM. The minimum is `Estimate ID, First Name, Roof Scope, Quote Amount, Days Since Sent, Notes`; download `sample-estimates.csv` from the Import page. In a privacy-safe pilot, contact and unrecognised columns are dropped and listed, never stored.
+3. **Review** each record (eligible, excluded or suppressed), then **prepare drafts**. Use the built-in templates, or the AI prompts in `CLAUDE.md`.
+4. **Copy approval batch** → text or email it to the contractor → record their "Approved". Each message is re-checked when you do.
+5. **Send** each approved message from the contractor's inbox or phone, then **record the contact** in the workbench (you must confirm it actually happened).
+6. **Replies:** record them. For interested homeowners, **Copy handoff** and text it to the contractor. Qualify the re-engagement and track the handoff to acknowledgement and outcome.
+7. **Log time** as you go; at the end send the **Contractor report** (print / PDF).
 
 ## Key rules
 
 The rules are enforced in `src/domain/`, not in the UI. Every action path calls the same checks.
+
+### Privacy-safe pilots (contact details stay in the contractor's system)
+
+- A record needs only an estimate ID, first name, scope, quote amount and age (or date), plus optional notes.
+- Contact permission rests on the **contractor's attestation**, recorded once per pilot with its date. An explicit per-homeowner "no" for a channel still blocks that channel. Opt-outs and exclusions work exactly as below.
+- Duplicates and the suppression ledger match on the estimate ID (case- and space-insensitive) as well as on any email/phone.
+- Phone, email and unrecognised columns in an import are not stored, and the record edit form refuses phone numbers and emails.
+- Whether a contractor's attestation is an adequate basis for each channel, especially text messages, is a **legal question** for review; see below.
 
 ### Eligibility
 
@@ -151,16 +170,18 @@ Records under 14 days old, or contacted by the contractor in the last 7 days, ar
 | --- | --- |
 | `src/domain/types.ts` | Entities. A contractor holds business details and owns the ledger. A pilot holds terms, channels, policy, sequence and economics inputs. A record belongs to one pilot. |
 | `src/domain/state.ts` | `transact()`: each command runs on a copy and either commits every change (with its audit events) or none |
-| `src/domain/importer.ts` | CSV template, preview/validation, normalisation, dedupe, commit |
+| `src/domain/importer.ts` | CSV templates (`sample-estimates.csv`, full template), forgiving header mapping, US/ISO dates, preview/validation, normalisation, dedupe (estimate ID, email, phone), commit |
 | `src/domain/eligibility.ts` | Eligibility blockers, permitted channels, contact blockers, ledger lookup |
 | `src/domain/records.ts` | Every record command (eligibility, suppression, drafts, approvals, outreach, replies, handoffs) |
 | `src/domain/priority.ts`, `queue.ts` | Prioritisation rules; the action queue and workflow status |
 | `src/domain/report.ts` | **All** pilot metrics and economics (single source for screens and exports) |
 | `src/domain/economics.ts` | Time entries, expenses, hourly-cost assumption, revenue |
 | `src/domain/lifecycle.ts` | Clear pilot, strip demo data, JSON/CSV exports |
-| `src/domain/templates.ts` | Local, rule-based message drafts (no AI service) |
+| `src/domain/templates.ts` | Local, rule-based drafts that pick an angle from the contractor's notes (insurance, claim approved, comparing bids, couple deciding, budget, seasonal); email and SMS variants. No AI service. |
+| `src/domain/touchpoints.ts` | Plain-text **approval batch** and **warm-lead handoff card** for pasting into a text/email to the contractor |
 | `src/storage/localStore.ts` | Persistence boundary (`load`/`save`). Today: browser `localStorage`, one JSON write per command. Stored data is shape-checked on load; unreadable data is backed up, not discarded, and not overwritten at start-up. The id counter is repaired if it lags behind existing ids. A revision number stops a stale browser tab from overwriting newer changes made in another tab. |
-| `src/data/demoSeed.ts` | Synthetic demo, built by running the real commands in date order |
+| `src/data/samplePipeline.ts` | The 10-estimate sample roofing pipeline used for demos (privacy-safe, fictional) |
+| `src/data/demoSeed.ts` | Extended synthetic demo (2 contractors, 35 estimates), loadable from the Data page |
 | `src/ui/` | React screens; display and input only |
 
 The activity log is append-only within the application: no command edits or removes earlier events, except clearing a pilot, which deletes that pilot's events and keeps a summary event, and resetting the demo. It is **not** tamper-proof: anyone with access to the browser profile can edit browser storage. Each event has the record, pilot and contractor ids, the event type, a timestamp, the from/to state and a detail. The current state is kept as ordinary records; this is not event sourcing.
@@ -200,11 +221,25 @@ The three operations are separate. None of them affects the others.
 
 ## Deliberately deferred
 
-Backend and database, authentication, multi-user roles, any outbound integration (email, SMS, telephony, CRM), contractor-facing views, AI drafting, automatic scheduling, payment handling, and statistical analysis of age bands.
+Backend and database, authentication, multi-user roles, any outbound integration (email, SMS, telephony, CRM), contractor-facing views, built-in AI drafting (the AI prompts in `CLAUDE.md` are used manually, outside the app), automatic scheduling, payment handling, and statistical analysis of age bands.
 
 ## Before real data can be used
 
-The rules in this tool record evidence and enforce operator decisions. They are **not** proof of legal compliance. Before any real contractor or homeowner data is used, at least the following must be reviewed and put in place.
+The rules in this tool record evidence and enforce operator decisions. They are **not** proof of legal compliance, and nothing here is legal advice.
+
+### Minimum before the first paid privacy-safe pilot
+
+A privacy-safe pilot keeps only estimate IDs, first names, job details and notes here. That lowers the risk; it doesn't remove it.
+
+- Full-disk encryption and a strong login on the laptop you use; nobody else uses that browser profile.
+- **Data → Export pilot data** at the end of every working session, saved somewhere encrypted. Browser storage is the only copy otherwise.
+- The written pilot terms ([`docs/pilot-agreement-summary.md`](docs/pilot-agreement-summary.md)) agreed by the contractor, including the attestation and who sends messages from which number or inbox.
+- **Texts are the riskiest channel.** Get a short legal review of texting homeowners on a contractor's behalf (TCPA consent, quiet hours, opt-out handling) before sending any. Until then, email-only pilots are the conservative choice.
+- When drafting with an AI tool, give it only first name, scope, quote amount, age and notes, never surnames, contact details or addresses, and check the AI provider's data-use settings.
+
+### Before storing homeowner contact details here (contact details imported here)
+
+At least the following must be reviewed and put in place.
 
 ### Security and operations
 

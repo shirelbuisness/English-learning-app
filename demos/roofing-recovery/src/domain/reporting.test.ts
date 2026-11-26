@@ -121,7 +121,7 @@ describe('reset demo data', () => {
     let s = demo();
     s = must(createContractor(s, { businessName: 'Real-ish Co', primaryContact: 'Op', email: '', phone: '', timeZone: 'America/Chicago', notes: '' }, clock));
     const cid = s.contractors.at(-1)!.id;
-    s = must(createPilot(s, cid, { ...defaultPilotInput(TODAY), name: 'Operator pilot', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
+    s = must(createPilot(s, cid, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'Operator pilot', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
     const opPilot = s.pilots.at(-1)!.id;
     s = importRows(s, opPilot, [row()]);
     // Change the demo, then reset.
@@ -142,7 +142,7 @@ describe('reset demo data', () => {
   it('a pilot created under a demo contractor is demo data', () => {
     let s = demo();
     const demoContractor = s.contractors[0]!.id;
-    s = must(createPilot(s, demoContractor, { ...defaultPilotInput(TODAY), name: 'Extra', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
+    s = must(createPilot(s, demoContractor, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'Extra', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
     expect(s.pilots.at(-1)!.isDemo).toBe(true);
   });
 });

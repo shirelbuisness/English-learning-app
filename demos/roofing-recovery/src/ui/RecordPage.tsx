@@ -2,6 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { formatDate, formatTimestamp, formatUsd } from '../domain/dates.ts';
 import { contactBlockers, dataIssues, eligibilityBlockers, ledgerMatches, permittedChannels } from '../domain/eligibility.ts';
 import { formatPhone } from '../domain/normalize.ts';
+import { warmLeadCard } from '../domain/touchpoints.ts';
+import { CopyPanel } from './CopyPanel.tsx';
 import { prioritize } from '../domain/priority.ts';
 import { taskFor, workflowStatus } from '../domain/queue.ts';
 import {
@@ -61,13 +63,13 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
   const pr = prioritize(state, r, today);
   const wf = workflowStatus(state, r);
   const task = taskFor(state, r, today);
-  const issues = dataIssues(r, today);
+  const issues = dataIssues(r, today, pilot.contactMode);
   const blockers = eligibilityBlockers(state, r);
   const permitted = permittedChannels(r, pilot);
   const restricted = r.eligibility.status === 'suppressed' || r.eligibility.status === 'excluded' || r.eligibility.status === 'ineligible';
   const [form, setForm] = useState<Form>(null);
   const events = state.events.filter((e) => e.recordId === r.id).slice().reverse();
-  const onLedger = ledgerMatches(state, pilot.contractorId, r.email, r.phone);
+  const onLedger = ledgerMatches(state, pilot.contractorId, r);
 
   return (
     <div className="space-y-4">
@@ -82,7 +84,7 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
             <WorkflowBadge s={wf} />
           </div>
           <p className="mt-1 text-sm text-slate-600">
-            {r.service || 'Service not recorded'} · {r.city}{r.state ? `, ${r.state}` : ''} · estimate {formatDate(r.estimateDate)} ({pr.ageDays} days old) · <span className="text-slate-400">{r.id}</span>
+            {r.estimateRef && <strong className="text-navy-900">{r.estimateRef} · </strong>}{r.service || 'Service not recorded'}{r.city ? ` · ${r.city}${r.state ? `, ${r.state}` : ''}` : ''} · sent {formatDate(r.estimateDate)} ({pr.ageDays} days ago) · <span className="text-slate-400">{r.id}</span>
           </p>
         </div>
         <div className="text-end">
@@ -167,7 +169,7 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
                   onSubmit={(reason) => wb.run((s, c) => reviewRestriction(s, r.id, reason, c)).ok && setForm(null)}
                 />
               )}
-              {form === 'details' && <DetailsForm record={r} onCancel={() => setForm(null)} onSubmit={(input) => wb.run((s, c) => updateRecordDetails(s, r.id, input, c)).ok && setForm(null)} />}
+              {form === 'details' && <DetailsForm record={r} privacySafe={pilot.contactMode === 'contractor_system'} onCancel={() => setForm(null)} onSubmit={(input) => wb.run((s, c) => updateRecordDetails(s, r.id, input, c)).ok && setForm(null)} />}
             </div>
           </Card>
 
@@ -179,6 +181,8 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
         <div className="min-w-0 space-y-4 lg:col-span-2">
           <Card title="Estimate">
             <dl className="space-y-1.5 text-sm">
+              <Row k="Contractor's estimate ID" v={r.estimateRef ?? '—'} />
+              <Row k="Contractor notes" v={r.notes || '—'} />
               <Row k="Amount" v={formatUsd(r.estimateAmount)} />
               <Row k="Estimate date" v={`${formatDate(r.estimateDate)} · ${pr.ageDays} days old`} />
               <Row k="Age at import" v={`${r.ageAtImport} days`} />
@@ -208,8 +212,17 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
 
           <Card title="Contact and authorization evidence">
             <dl className="space-y-1.5 text-sm">
-              <Row k="Email" v={r.email ?? '—'} />
-              <Row k="Phone" v={formatPhone(r.phone)} />
+              {pilot.contactMode === 'contractor_system' && !r.email && !r.phone ? (
+                <Row k="Contact details" v={<span className="text-sage-700">In the contractor’s system{r.estimateRef ? ` under ${r.estimateRef}` : ''}</span>} />
+              ) : (
+                <>
+                  <Row k="Email" v={r.email ?? '—'} />
+                  <Row k="Phone" v={formatPhone(r.phone)} />
+                </>
+              )}
+              {pilot.contactMode === 'contractor_system' && (
+                <Row k="Permission basis" v={pilot.contractorAttestation ? `Contractor attestation ${formatDate(pilot.contractorAttestation.recordedOn)}` : <span className="text-red-800">No contractor attestation yet</span>} />
+              )}
               <Row k="Email consent" v={<ConsentBadge c={r.authorization.emailConsent} />} />
               <Row k="Call consent" v={<ConsentBadge c={r.authorization.phoneConsent} />} />
               <Row k="Text consent" v={<ConsentBadge c={r.authorization.smsConsent} />} />
@@ -456,7 +469,7 @@ function ReplyCard({ wb, record: r, form, setForm, today }: { wb: Workbench; rec
   const [notes, setNotes] = useState('');
   if (!reply && !r.qualification) return null;
   return (
-    <Card title="Homeowner reply" subtitle="A reply is not a recovered opportunity. Qualify it only if the homeowner confirmed the project is unresolved and asked for a next step.">
+    <Card title="Homeowner reply" subtitle="A reply is not a recovered opportunity. Qualify it only if the homeowner confirmed the project is unresolved and asked for a next step." action={<WarmLeadCopy wb={wb} record={r} />}>
       {r.qualification ? (
         <p className="text-sm text-sage-700">
           <strong>Qualified re-engagement</strong> on {formatTimestamp(r.qualification.at)} — requested {REQUEST_LABELS[r.qualification.request].toLowerCase()}.
@@ -541,7 +554,7 @@ function HandoffCard({ wb, record: r, today }: { wb: Workbench; record: Estimate
   const stage = h.outcome ? 4 : h.acknowledgedOn ? 3 : h.notifiedOn ? 2 : 1;
   const restricted = isRestricted(r);
   return (
-    <Card title="Warm handoff" action={<ol className="flex flex-wrap gap-1 text-xs">{['Created', 'Contractor notified', 'Acknowledged', 'Outcome'].map((s, i) => <li key={s}><Badge tone={i < stage ? 'green' : 'plain'}>{i < stage ? '✓ ' : ''}{s}</Badge></li>)}</ol>}>
+    <Card title={<span className="flex flex-wrap items-center gap-2">Warm handoff <WarmLeadCopy wb={wb} record={r} /></span>} action={<ol className="flex flex-wrap gap-1 text-xs">{['Created', 'Contractor notified', 'Acknowledged', 'Outcome'].map((s, i) => <li key={s}><Badge tone={i < stage ? 'green' : 'plain'}>{i < stage ? '✓ ' : ''}{s}</Badge></li>)}</ol>}>
       <dl className="space-y-1.5 text-sm">
         <Row k="Homeowner responded" v={formatDate(h.respondedOn)} />
         <Row k="Requested" v={h.homeownerRequest} />
@@ -660,7 +673,7 @@ function LateResponseForm({ title = 'Record reply', today, permitted, onSubmit, 
   );
 }
 
-function DetailsForm({ record: r, onSubmit, onCancel }: { record: EstimateRecord; onSubmit: (i: { email: string; phone: string; authorization: EstimateRecord['authorization'] }) => void; onCancel: () => void }) {
+function DetailsForm({ record: r, privacySafe, onSubmit, onCancel }: { record: EstimateRecord; privacySafe: boolean; onSubmit: (i: { email: string; phone: string; authorization: EstimateRecord['authorization'] }) => void; onCancel: () => void }) {
   const [email, setEmail] = useState(r.email ?? '');
   const [phone, setPhone] = useState(r.phone ? formatPhone(r.phone) : '');
   const [a, setA] = useState(r.authorization);
@@ -673,8 +686,14 @@ function DetailsForm({ record: r, onSubmit, onCancel }: { record: EstimateRecord
   );
   return (
     <form className="grid gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-3" onSubmit={(e) => { e.preventDefault(); onSubmit({ email, phone, authorization: a }); }}>
-      <Field label="Email"><input className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-      <Field label="Phone"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+      {privacySafe ? (
+        <p className="text-xs text-sage-700 sm:col-span-2">Privacy-safe pilot: phone and email stay in the contractor’s system.</p>
+      ) : (
+        <>
+          <Field label="Email"><input className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+          <Field label="Phone"><input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+        </>
+      )}
       <Field label="Contact info source"><input className={inputClass} value={a.contactInfoSource} onChange={(e) => setA({ ...a, contactInfoSource: e.target.value })} /></Field>
       {consent('emailConsent', 'Email consent')}
       {consent('phoneConsent', 'Call consent')}
@@ -704,3 +723,22 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
+
+/** One-click warm lead card for texting the contractor. Shown only when there is a reply to hand off. */
+function WarmLeadCopy({ wb, record }: { wb: Workbench; record: EstimateRecord }) {
+  const [open, setOpen] = useState(false);
+  const text = warmLeadCard(wb.state, record.id, now().today);
+  if (!text) return null;
+  return (
+    <>
+      <Button size="sm" variant="primary" onClick={() => setOpen(true)}>Copy warm lead handoff</Button>
+      {open && (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-slate-900/30 p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <CopyPanel title={`Warm lead handoff · ${record.customerName}`} text={text} hint="Text this straight to the contractor's phone." onClose={() => setOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

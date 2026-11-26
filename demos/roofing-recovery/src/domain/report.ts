@@ -61,7 +61,7 @@ export function pilotReport(state: WorkbenchState, pilotId: string, today: IsoDa
       conflicts: imports.reduce((a, i) => a + i.conflictsSkipped, 0),
       invalidRows: imports.reduce((a, i) => a + i.invalid, 0),
       skippedByOperator: imports.reduce((a, i) => a + i.excludedByOperator, 0),
-      withDataIssues: records.filter((r) => dataIssues(r, today).some((i) => i.level === 'error')).length,
+      withDataIssues: records.filter((r) => dataIssues(r, today, pilot?.contactMode).some((i) => i.level === 'error')).length,
       awaitingReview: count('pending_review'),
       eligible: count('eligible'),
       ineligible: count('ineligible'),

@@ -1,6 +1,12 @@
 import { formatShortDate, formatUsd } from './dates.ts';
 import type { Channel, Contractor, EstimateRecord, TemplateKey } from './types.ts';
 
+/*
+ * Local, rule-based drafts. The operator edits them; the contractor approves them;
+ * nothing here sends anything. Wording is deliberately low-pressure: one question,
+ * an easy way to say "not now", and no false urgency or discounts.
+ */
+
 const first = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
 function serviceText(service: string): string {
@@ -8,10 +14,55 @@ function serviceText(service: string): string {
   return plain.charAt(0).toLowerCase() + plain.slice(1);
 }
 
-/**
- * Local, rule-based drafts. The operator edits them; the contractor approves them;
- * nothing here sends anything.
- */
+export type Situation = 'claim_approved' | 'insurance' | 'comparing' | 'deciding' | 'budget' | 'seasonal';
+
+/** Pick the follow-up angle from the contractor's notes (first match wins). */
+export function situationFromNotes(notes: string): Situation {
+  const n = notes.toLowerCase();
+  if (/(adjuster|claim|insurance)[^.]*\b(approved|paid|came through)|\bcheck\b/.test(n)) return 'claim_approved';
+  if (/adjuster|insurance|claim|hail|storm|wind|deductible/.test(n)) return 'insurance';
+  if (/2nd|second|other bid|another bid|comparing|other quote|shopping|more bids/.test(n)) return 'comparing';
+  if (/husband|wife|spouse|partner|decid|think(ing)? (it )?over|talk it over/.test(n)) return 'deciding';
+  if (/budget|financ|payment|afford|price|cost|money|tax refund/.test(n)) return 'budget';
+  return 'seasonal';
+}
+
+/** One natural sentence for the situation (email body). */
+function emailAngle(s: Situation, service: string): string {
+  switch (s) {
+    case 'claim_approved':
+      return `Glad to hear the claim came through. Whenever you're ready, we can get you on the schedule, and we're happy to help with any paperwork the insurance company needs from us.`;
+    case 'insurance':
+      return `I know these often stall while the insurance side gets sorted out. Has your adjuster been out yet? If it helps, we're happy to walk through the claim paperwork with you or meet the adjuster on site.`;
+    case 'comparing':
+      return `If you're comparing bids, I'm glad to go through ours line by line, so you're comparing like for like on materials, underlayment, ventilation and warranty.`;
+    case 'deciding':
+      return `Totally understand it's a big decision to make together. If it would help, we can set up a quick call or a visit when you're both home to answer any questions.`;
+    case 'budget':
+      return `If timing or budget is the sticking point, we can look at the scope again or go over financing options. No pressure either way.`;
+    case 'seasonal':
+      return `Our schedule for the next few weeks is filling up, so I wanted to check in before it does in case you'd like to get the ${service} on the calendar.`;
+  }
+}
+
+/** One short line for the situation (SMS). */
+function smsAngle(s: Situation): string {
+  switch (s) {
+    case 'claim_approved':
+      return 'Glad the claim came through. Happy to get you on the schedule whenever you’re ready.';
+    case 'insurance':
+      return 'Any word from your adjuster yet? Happy to help with the claim side.';
+    case 'comparing':
+      return 'Happy to walk through our bid line by line if you’re comparing.';
+    case 'deciding':
+      return 'Happy to answer any questions for you both, whenever works.';
+    case 'budget':
+      return 'We can adjust the scope or go over financing if that helps.';
+    case 'seasonal':
+      return 'We still have a few openings on the schedule if you’d like to get it booked.';
+  }
+}
+
 export function draftText(template: TemplateKey, channel: Channel, record: EstimateRecord, contractor: Contractor): string {
   const name = first(record.customerName);
   const rep = first(contractor.primaryContact);
@@ -20,12 +71,14 @@ export function draftText(template: TemplateKey, channel: Channel, record: Estim
   const when = formatShortDate(record.estimateDate);
   const amount = record.estimateAmount > 0 ? ` (${formatUsd(record.estimateAmount)})` : '';
   const signOff = `${rep}\n${biz}${contractor.phone ? `\n${contractor.phone}` : ''}`;
+  const situation = situationFromNotes(record.notes ?? '');
 
   if (channel === 'phone' || template === 'call_script') {
     return [
-      `Call ${record.customerName} about the ${service} estimate from ${when}${amount}.`,
+      `Call ${name}${record.estimateRef ? ` (${record.estimateRef})` : ''} about the ${service} estimate from ${when}${amount}.`,
       `- Introduce: "${rep} asked me to check in on behalf of ${biz}."`,
-      `- Ask whether the project is still open and if they have questions about the estimate.`,
+      record.notes ? `- Context: ${record.notes}` : '- Ask whether the project is still open and if they have questions about the estimate.',
+      `- Angle: ${smsAngle(situation)}`,
       `- If interested: note what they want next (callback, inspection, revised estimate).`,
       `- If they ask not to be contacted: record "Opted out" — no further outreach.`,
       `- Voicemail: brief, no pressure, leave ${contractor.phone || 'the office number'}.`,
@@ -33,29 +86,28 @@ export function draftText(template: TemplateKey, channel: Channel, record: Estim
   }
 
   if (channel === 'sms') {
-    const body =
-      template === 'final'
-        ? `Hi ${name}, ${rep} at ${biz} — last check-in on your ${service} estimate. If you'd like to talk, just reply. Otherwise we'll close your file. Reply STOP to opt out.`
-        : `Hi ${name}, ${rep} at ${biz} here following up on your ${service} estimate from ${when}. Any questions I can answer? Reply STOP to opt out.`;
-    return body;
+    if (template === 'final') {
+      return `Hi ${name}, ${rep} from ${biz}. Last check-in on your roof estimate. If the timing's not right, no worries, just let me know and I'll close it out. Reply STOP to opt out.`;
+    }
+    return `Hi ${name}, ${rep} from ${biz} following up on your roof estimate. ${smsAngle(situation)} Reply STOP to opt out.`;
   }
 
   switch (template) {
     case 'initial':
       return (
-        `Hi ${name},\n\nThis is ${rep} with ${biz}. I wanted to follow up on the estimate we prepared for your ${service} on ${when}${amount}. ` +
-        `Is the project still something you're considering? I'm happy to answer questions, walk through material options, or adjust the scope if that helps.\n\n` +
+        `Hi ${name},\n\nThis is ${rep} with ${biz}, following up on the estimate we put together for your ${service} on ${when}${amount}. ` +
+        `${emailAngle(situation, service)}\n\n` +
         `If you've already gone another direction, just let me know and I'll close out your file.\n\n${signOff}`
       );
     case 'unanswered':
       return (
-        `Hi ${name},\n\nJust following up on my earlier note about your ${service} estimate. ` +
-        `If you'd like to talk it over or have us take another look at the roof, reply here and we'll set a time that suits you.\n\n${signOff}`
+        `Hi ${name},\n\nJust a quick follow-up on your ${service} estimate. ${emailAngle(situation, service)} ` +
+        `Reply here with a good time and we'll work around you.\n\n${signOff}`
       );
     case 'final':
       return (
         `Hi ${name},\n\nI don't want to keep filling your inbox, so this is my last note about the ${service} estimate from ${when}. ` +
-        `If the project is still open, we'd be glad to help — just reply. Otherwise, no need to respond and we'll close your file.\n\nThanks for considering ${biz}.\n\n${signOff}`
+        `If the project is still open, we'd be glad to help, just reply. Otherwise, no need to respond and we'll close your file.\n\nThanks for considering ${biz}.\n\n${signOff}`
       );
   }
 }

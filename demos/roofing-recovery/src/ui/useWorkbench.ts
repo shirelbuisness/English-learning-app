@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { withDemoData } from '../data/demoSeed.ts';
+import { withSamplePipeline } from '../data/samplePipeline.ts';
 import { clockFromDate } from '../domain/dates.ts';
 import { emptyState } from '../domain/state.ts';
 import type { Clock, WorkbenchState } from '../domain/types.ts';
@@ -28,7 +28,7 @@ export function useWorkbench() {
     let revision = loaded.revision;
     if (!state) {
       try {
-        state = withDemoData(emptyState(), now().today);
+        state = withSamplePipeline(emptyState(), now().today);
       } catch (e) {
         state = emptyState();
         error = `${error ? `${error} ` : ''}The demo data could not be built (${(e as Error).message}); starting empty.`;

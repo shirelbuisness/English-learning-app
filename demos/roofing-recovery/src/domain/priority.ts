@@ -57,7 +57,7 @@ export function prioritize(state: WorkbenchState, record: EstimateRecord, today:
   if (status === 'pending_review') {
     // Blockers to eligibility, plus any data error they don't already cover (e.g. future dates).
     const blockers = eligibilityBlockers(state, record);
-    const extra = dataIssues(record, today).filter((i) => i.level === 'error' && /future/.test(i.message)).map((i) => i.message);
+    const extra = dataIssues(record, today, state.pilots.find((p) => p.id === record.pilotId)?.contactMode).filter((i) => i.level === 'error' && /future/.test(i.message)).map((i) => i.message);
     const unique = [...blockers, ...extra];
     return {
       category: 'review',

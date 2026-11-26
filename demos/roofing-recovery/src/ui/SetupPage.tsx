@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { formatDate } from '../domain/dates.ts';
 import { createContractor, createPilot, defaultPilotInput, setPilotStatus, updateContractor, updatePilot, type ContractorInput, type PilotInput } from '../domain/setup.ts';
-import { CHANNEL_LABELS, CHANNELS, PILOT_STATUS_LABELS, TEMPLATE_LABELS, type Channel, type Contractor, type Pilot, type PilotStatus } from '../domain/types.ts';
+import { CHANNEL_LABELS, CHANNELS, CONTACT_MODE_LABELS, PILOT_STATUS_LABELS, TEMPLATE_LABELS, type Channel, type ContactMode, type Contractor, type Pilot, type PilotStatus } from '../domain/types.ts';
 import { Badge, Button, Card, cx, Field, inputClass } from './shared.tsx';
 import { now, type Workbench } from './useWorkbench.ts';
 
@@ -84,6 +84,11 @@ export function SetupPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: 
                           {formatDate(p.startDate)} – {formatDate(p.endDate)} · {n}/{p.recordLimit} records · channels: {p.approvedChannels.map((ch) => CHANNEL_LABELS[ch]).join(', ') || 'none'} · sequence: {p.sequence.map((s) => `day ${s.day} ${s.channel}`).join(', ')}
                         </div>
                         <div className="mt-1 max-w-3xl text-xs text-slate-600">Policy: {p.communicationPolicy || <span className="text-red-800">not recorded</span>}</div>
+                        <div className="mt-0.5 max-w-3xl text-xs text-slate-600">
+                          {CONTACT_MODE_LABELS[p.contactMode]}
+                          {p.contactMode === 'contractor_system' &&
+                            (p.contractorAttestation ? ` · contractor attestation recorded ${formatDate(p.contractorAttestation.recordedOn)}` : <span className="text-red-800"> · contractor attestation missing (required to activate)</span>)}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {pilot?.id !== p.id && <Button size="sm" variant="ghost" onClick={() => onSelectPilot(p.id)}>Work on this pilot</Button>}
@@ -160,6 +165,27 @@ function PilotForm({ initial, isNew, onSubmit, onCancel }: { initial: PilotInput
           ))}
         </div>
       </fieldset>
+      <fieldset className="text-sm sm:col-span-4">
+        <legend className="mb-1 text-xs font-medium text-slate-600">Where do homeowner contact details live?</legend>
+        <div className="flex flex-wrap gap-4">
+          {(['contractor_system', 'in_workbench'] as ContactMode[]).map((m) => (
+            <label key={m} className="flex items-center gap-1.5">
+              <input type="radio" name="contactMode" className="accent-navy-800" checked={f.contactMode === m} onChange={() => setF({ ...f, contactMode: m })} />
+              {CONTACT_MODE_LABELS[m]}{m === 'contractor_system' && <span className="text-xs text-sage-700"> (recommended)</span>}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {f.contactMode === 'contractor_system' && (
+        <div className="grid gap-2 rounded-md border border-sage-100 bg-white p-3 sm:col-span-4 sm:grid-cols-4">
+          <Field label="What the contractor confirmed (contact permission)" className="sm:col-span-3" hint="E.g. “Every homeowner on the list asked us for an estimate and may be followed up by email or text. Anyone who opted out was left off.” Needed before activation.">
+            <textarea rows={2} className={inputClass} value={f.contractorAttestation?.text ?? ''} onChange={(e) => setF({ ...f, contractorAttestation: e.target.value.trim() ? { text: e.target.value, recordedOn: f.contractorAttestation?.recordedOn ?? now().today } : null })} />
+          </Field>
+          <Field label="Date confirmed">
+            <input type="date" className={inputClass} value={f.contractorAttestation?.recordedOn ?? ''} disabled={!f.contractorAttestation} onChange={(e) => f.contractorAttestation && setF({ ...f, contractorAttestation: { ...f.contractorAttestation, recordedOn: e.target.value } })} />
+          </Field>
+        </div>
+      )}
       <Field label="Approved communication policy / templates" className="sm:col-span-4" hint="What the contractor approved: who may be contacted, how, and the message templates. Required before activation.">
         <textarea rows={3} className={inputClass} value={f.communicationPolicy} onChange={(e) => setF({ ...f, communicationPolicy: e.target.value })} />
       </Field>

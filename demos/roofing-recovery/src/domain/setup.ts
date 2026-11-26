@@ -54,7 +54,18 @@ export function updateContractor(state: WorkbenchState, contractorId: string, in
 
 export type PilotInput = Pick<
   Pilot,
-  'name' | 'startDate' | 'endDate' | 'recordLimit' | 'approvedChannels' | 'communicationPolicy' | 'sequence' | 'notes' | 'hourlyCost' | 'revenue'
+  | 'name'
+  | 'startDate'
+  | 'endDate'
+  | 'recordLimit'
+  | 'approvedChannels'
+  | 'communicationPolicy'
+  | 'contactMode'
+  | 'contractorAttestation'
+  | 'sequence'
+  | 'notes'
+  | 'hourlyCost'
+  | 'revenue'
 >;
 
 export function defaultPilotInput(today: string): PilotInput {
@@ -65,6 +76,8 @@ export function defaultPilotInput(today: string): PilotInput {
     recordLimit: 40,
     approvedChannels: ['email'],
     communicationPolicy: '',
+    contactMode: 'contractor_system',
+    contractorAttestation: null,
     sequence: DEFAULT_SEQUENCE.map((s) => ({ ...s })),
     notes: '',
     hourlyCost: 45,
@@ -79,6 +92,11 @@ function checkPilot(input: PilotInput): void {
   if (!Number.isInteger(input.recordLimit) || input.recordLimit < 1 || input.recordLimit > 1000) fail('Record limit must be a whole number from 1 to 1,000.');
   if (input.approvedChannels.some((c) => !CHANNELS.includes(c))) fail('Unknown channel.');
   if (!(input.hourlyCost >= 0) || !(input.revenue >= 0)) fail('Hourly cost and revenue must be zero or more.');
+  if (input.contactMode !== 'contractor_system' && input.contactMode !== 'in_workbench') fail('Choose where contact details are kept.');
+  if (input.contractorAttestation) {
+    if (input.contractorAttestation.text.trim().length < 20) fail('Describe what the contractor confirmed (at least 20 characters).');
+    if (!isIsoDate(input.contractorAttestation.recordedOn)) fail('Enter the date the contractor confirmed.');
+  }
   checkSequence(input.sequence);
 }
 
@@ -151,6 +169,9 @@ export function setPilotStatus(state: WorkbenchState, pilotId: string, status: P
     if (status === 'active') {
       if (p.approvedChannels.length === 0) fail('Approve at least one communication channel before activating.');
       if (!p.communicationPolicy.trim()) fail('Record the approved communication policy before activating.');
+      if (p.contactMode === 'contractor_system' && !p.contractorAttestation) {
+        fail("Record the contractor's confirmation that these homeowners may be contacted before activating a privacy-safe pilot.");
+      }
     }
     tx.log({ type: 'pilot_status_changed', contractorId: p.contractorId, pilotId, from: p.status, to: status, detail: `Pilot ${status}` });
     p.status = status;

@@ -1,45 +1,40 @@
-# Internal: demo script, objections and onboarding checklist
+# Internal: 3-minute demo, objections and onboarding
 
-*Internal use. Every figure in the demo is fictional; say so.*
+*Internal use. Everything in the sample pipeline is fictional: say so on the call.*
 
 ## Before the call
 
-- Open the workbench and reset the demo data (Data → Reset demo data) so the dates are current.
-- Have the contractor report open in a second tab (Report → Contractor report).
-- Know your pilot price and length. Don't improvise numbers.
+- Open the workbench and click **Load sample pipeline**, so the dates are current.
+- Have [`pilot-one-pager.md`](pilot-one-pager.md) ready to send after the call.
+- Know the offer by heart: **14 days, 25 stale quotes (14–60 days, $8k+), every message approved by you. $300 flat, or $0 + $500 per closed job.**
 
-## Two-minute walkthrough
+## The 3-minute screen share
 
-1. **Show the contractor report first** (about 30 seconds). "This is what you get at the end of a pilot. It's sample data, but this is the exact format." Point at the summary sentence and the warm handoffs table.
-2. **Queue** (about 30 seconds). "This is my daily work list. I review records, prepare messages, get your approval, make contact and hand you the people who reply."
-3. **Open a high-priority record**, e.g. James Whitfield (about 40 seconds). Show:
-   - why it was prioritised;
-   - the consent evidence;
-   - the message draft;
-   - that approval comes from you, the contractor.
-4. **Show a blocked record** (about 20 seconds). Open a suppressed one such as Linda Okafor. "When someone opts out, they're blocked across all your pilots. Even a re-uploaded spreadsheet can't bring them back."
-5. **Close:** "Want to try it on [40] of your own open estimates?"
+1. **The pile** (30 seconds). Queue page. "These are 10 sample quotes like yours: waiting on adjuster, getting a second bid, husband and wife deciding. Most roofers never get back to these."
+2. **Approval by text** (45 seconds). Click **Copy approval batch** and show the numbered list. "This is what lands on your phone. You reply 'Approved', 10 seconds, and nothing goes out without it." Click **Contractor replied "Approved"**.
+3. **Personal, not spammy** (30 seconds). Open Mike (Q-2236, getting a second bid) and show the draft: it offers a line-by-line comparison, no discount, no pressure.
+4. **The warm lead** (45 seconds). Back on the queue, Sarah (Q-2231) replied: "Adjuster finally approved the claim, can someone call me?" Click **Copy handoff**. "This is the text you get. You call her back; I've done the chasing."
+5. **Safe** (15 seconds). "Anyone who says stop is never contacted again, and your customer phone numbers and emails never leave your system. I track quote numbers and first names only."
+6. **Close** (15 seconds). "Want to try it on 25 of your stale quotes for 14 days? $300 flat, or nothing upfront and $500 only when one closes."
 
-## Likely objections
+## Objection answers (honest)
 
-| They say | Answer honestly |
+| They say | Answer |
 |---|---|
-| "Is this a CRM I have to learn?" | No. We do the work; you approve messages and get handoffs. |
-| "Who sends the messages?" | We do, in your name, only after you approve each one. This tool records it; it doesn't send anything itself. |
-| "Will this annoy my customers?" | Three short touches at most, only to people who asked for an estimate and agreed to be contacted. Anyone who says stop is never contacted again. |
-| "Is this legal?" | We only contact people with documented permission and honour every opt-out. [We are having / will have] the process reviewed by a lawyer; we won't claim more than that. *(Don't give legal assurances.)* |
-| "What results will I get?" | We don't know yet; that's what the pilot measures. *(Never quote conversion rates or recovered revenue; we have no real data.)* |
-| "What about my customers' data?" | Used only for your pilot, not shared, and deleted when you ask. *(Only say this once the real-data safeguards in the README exist.)* |
+| "I don't have time for another tool." | You never log in. You approve by text and get leads by text. |
+| "Who sends the messages?" | They go out from your email or business number, only after you approve them, so replies come to you. |
+| "Will this annoy my customers?" | At most three short, polite touches over two weeks, only to people who asked you for an estimate. Anyone who says stop is never contacted again. |
+| "What about my customer data?" | Phone numbers, emails and addresses stay in your system. I work from quote numbers and first names. |
+| "Is texting customers legal?" | We only contact people you confirm asked for your estimate, from your own number, and honour every opt-out immediately. I'm not a lawyer and won't claim more than that. *(Get the legal review in the README before running text follow-ups.)* |
+| "What results will I get?" | I can't promise a number; that's exactly what the pilot measures on your own quotes. With pay-on-results, you only pay when a job closes. *(Never quote conversion rates: there's no real data yet.)* |
+| "Why so cheap?" | You're a founding partner: I'm building the service, and the pilot proves it on real quotes. |
 
-## Onboarding checklist (first paid pilot)
+## Onboarding checklist (after a yes)
 
-> Not before the real-data prerequisites in the README are in place: device encryption, backups, legal review.
-
-- [ ] Signed pilot terms: scope, record limit, fee, who approves messages, response times.
-- [ ] Approved channels (email / calls / texts) and the approved message templates, recorded on the pilot.
-- [ ] Estimate export received. Columns mapped to the import template.
-- [ ] For each estimate: where the contact details came from, and what consent evidence exists. Ask: "Does your estimate form have a consent checkbox? Do you have it in writing?"
-- [ ] Contractor's existing do-not-contact list, imported as opt-outs or recorded as exclusions.
-- [ ] Anyone the contractor doesn't want contacted (family, disputes, VIPs), recorded as exclusions.
-- [ ] Who receives handoffs, and how: name, phone, expected call-back time.
-- [ ] Time tracking started from the kickoff call: log every session.
+- [ ] Pricing option chosen; agreement summary sent and agreed by reply.
+- [ ] Contractor confirmed contact permission (paste their words into the pilot's attestation) and listed anyone to skip.
+- [ ] Channels agreed (email only, or email + text) and which inbox and number messages go out from.
+- [ ] 25 quotes received; created a **privacy-safe** pilot (record limit 25), imported, and checked the preview's "not imported" columns.
+- [ ] Laptop encrypted; **Data → Export pilot data** after every session.
+- [ ] First approval batch sent within 24 hours of kickoff.
+- [ ] Time logged from the kickoff call onwards.

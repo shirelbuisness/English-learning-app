@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatUsd } from '../domain/dates.ts';
-import { analyzeImport, COLUMN_HELP, commitImport, TEMPLATE_COLUMNS, templateCsv, type ImportAction, type RowAnalysis } from '../domain/importer.ts';
+import { analyzeImport, COLUMN_HELP, commitImport, sampleEstimatesCsv, SAMPLE_CSV_COLUMNS, TEMPLATE_COLUMNS, templateCsv, type ImportAction, type RowAnalysis } from '../domain/importer.ts';
 import { formatPhone } from '../domain/normalize.ts';
 import { ELIGIBILITY_SHORT, type Pilot } from '../domain/types.ts';
 import { href, type Route } from './App.tsx';
@@ -83,7 +83,14 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
             <Callout tone="amber">Synthetic data only. Do not import real homeowner information into this prototype.</Callout>
           </div>
         </Card>
-        <Card title="CSV template" action={<Button size="sm" onClick={() => download('estimate-import-template.csv', templateCsv())}>Download template</Button>}>
+        <Card title="CSV format" action={<Button size="sm" variant="primary" onClick={() => download('sample-estimates.csv', sampleEstimatesCsv())}>Download sample-estimates.csv</Button>}>
+          <p className="text-sm text-slate-700">
+            Minimum per estimate: <strong>{SAMPLE_CSV_COLUMNS.join(', ')}</strong>. No phone numbers, emails or addresses needed{pilot.contactMode === 'contractor_system' ? '; keep those in the contractor’s system' : ''}.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Messy exports are fine: headers like “Quote #”, “Job ID”, “Customer”, “Total”, “Date Sent” or “Comments” are recognised, amounts like “$18,400.00” and US dates like 11/03/2026 are accepted. Unrecognised columns are ignored.
+          </p>
+          <Button size="sm" variant="ghost" onClick={() => download('estimate-import-full-template.csv', templateCsv())}>Full template (all optional columns)</Button>
           <details className="text-xs text-slate-600">
             <summary className="cursor-pointer">Column reference ({TEMPLATE_COLUMNS.length} columns)</summary>
             <dl className="mt-2 space-y-1">
@@ -101,6 +108,11 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
           title={`2. Review ${rows.length} rows from ${fileName || 'pasted text'}`}
           subtitle={`${counts.newRows} new · ${counts.dup} duplicates of existing records · ${counts.inFile} duplicates within the file · ${counts.conflict} conflicts · ${counts.invalid} invalid · ${counts.warnings} with warnings`}
         >
+          {analysis.droppedColumns.length > 0 && (
+            <Callout tone="green">
+              Privacy-safe pilot: not imported (kept only in the contractor’s system): <strong>{analysis.droppedColumns.join(', ')}</strong>.
+            </Callout>
+          )}
           {analysis.unknownColumns.length > 0 && <p className="mb-2 text-xs text-slate-500">Ignored columns: {analysis.unknownColumns.join(', ')}. Kept in each record's original import row.</p>}
           {analysis.missingOptionalColumns.length > 0 && <p className="mb-2 text-xs text-amber-900">Columns not in file (treated as blank/unknown): {analysis.missingOptionalColumns.join(', ')}.</p>}
           <div className="-mx-4 overflow-x-auto">
@@ -122,7 +134,10 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
                     <td className={cx(td, 'ps-4 tabular-nums text-slate-500')}>{r.rowNumber}</td>
                     <td className={td}>
                       <div className="font-medium">{r.parsed?.customerName ?? r.original.customer_name ?? '—'}</div>
-                      <div className="text-xs text-slate-500">{r.parsed ? `${r.parsed.email ?? 'no email'} · ${formatPhone(r.parsed.phone)}` : ''}</div>
+                      <div className="text-xs text-slate-500">
+                        {r.parsed ? [r.parsed.estimateRef ?? 'no estimate ID', r.parsed.email, r.parsed.phone ? formatPhone(r.parsed.phone) : null].filter(Boolean).join(' · ') : ''}
+                      </div>
+                      {r.parsed?.notes && <div className="text-xs text-slate-600 italic">“{r.parsed.notes}”</div>}
                     </td>
                     <td className={cx(td, 'text-end tabular-nums')}>{r.parsed ? formatUsd(r.parsed.estimateAmount) : r.original.estimate_amount || '—'}<div className="text-xs text-slate-500">{r.parsed?.estimateDate ?? r.original.estimate_date}</div></td>
                     <td className={td}>

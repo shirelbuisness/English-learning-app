@@ -36,9 +36,9 @@ describe('CSV template and validation', () => {
   it.each([
     ['', 'The file is empty.'],
     ['name,city\nx,y', 'Missing required column'],
-    ['customer_name,estimate_date,estimate_amount\nA,2026-10-01,100', 'customer_email or customer_phone'],
+    ['customer_name,estimate_date,estimate_amount\nA,2026-10-01,100', 'estimate ID column'],
     [`${csv([]).trim()}\n`, 'no rows'],
-    ['customer_name,customer_name,estimate_date,estimate_amount,customer_email\n', 'Duplicate column'],
+    ['customer_name,customer_name,estimate_date,estimate_amount,customer_email\n', 'both look like customer_name'],
     ['\u0000\u0001binary', 'text CSV'],
   ])('rejects malformed file %#', (text, message) => {
     const { s, pilotId } = fixture();
@@ -51,7 +51,7 @@ describe('CSV template and validation', () => {
     const { s, pilotId } = fixture();
     const text = csv([
       row({ customer_name: '' }),
-      row({ customer_email: 'b@example.com', customer_phone: '', estimate_date: '10/12/2026' }),
+      row({ customer_email: 'b@example.com', customer_phone: '', estimate_date: '13/45/2026' }),
       row({ customer_email: 'c@example.com', customer_phone: '', estimate_amount: 'abc' }),
       row({ customer_email: 'd@example.com', customer_phone: '', estimate_date: '2027-01-01' }),
       row({ customer_email: 'e@example.com', customer_phone: '', prior_opt_out: 'perhaps' }),
@@ -60,11 +60,11 @@ describe('CSV template and validation', () => {
     expect(a.fatal).toEqual([]);
     const errs = a.rows.map((r) => r.errors.join('; '));
     expect(errs[0]).toContain('customer_name is required');
-    expect(errs[1]).toContain('must be YYYY-MM-DD');
+    expect(errs[1]).toContain('must be YYYY-MM-DD or MM/DD/YYYY');
     expect(errs[2]).toContain('not a valid dollar amount');
     expect(errs[3]).toContain('in the future');
     expect(errs[4]).toContain('prior_opt_out');
-    expect(errs[5]).toContain('Expected 20 fields');
+    expect(errs[5]).toContain('Expected 23 fields');
     for (const r of a.rows) expect(r.allowed).toEqual(['skip']);
     const forced = commitImport(s, pilotId, text, 'x.csv', { 2: 'import' }, clock);
     expect(forced.ok).toBe(false);
@@ -98,7 +98,7 @@ describe('CSV template and validation', () => {
 
   it('enforces the pilot record limit', () => {
     const { s, pilotId } = fixture();
-    const small = must(updatePilot(s, pilotId, { ...defaultPilotInput(TODAY), name: 'Small', recordLimit: 2, approvedChannels: ['email', 'phone'], communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
+    const small = must(updatePilot(s, pilotId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'Small', recordLimit: 2, approvedChannels: ['email', 'phone'], communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
     const rows = [1, 2, 3].map((i) => row({ customer_name: `P${i}`, customer_email: `p${i}@example.com`, customer_phone: '' }));
     const r = commitImport(small, pilotId, csv(rows), 'x.csv', {}, clock);
     expect(!r.ok && r.error).toMatch(/exceed the pilot limit of 2/);
@@ -218,7 +218,7 @@ describe('pilot isolation and the suppression ledger', () => {
     n = must(suppressRecord(n, rec(n, 'Alex Rivera').id, { reason: 'Opt-out', channel: 'email', date: TODAY, source: 'homeowner' }, clock));
     n = must(createContractor(n, { businessName: 'Other Co', primaryContact: 'Sam', email: '', phone: '', timeZone: 'America/Chicago', notes: '' }, clock));
     const other = n.contractors.at(-1)!.id;
-    n = must(createPilot(n, other, { ...defaultPilotInput(TODAY), name: 'Other pilot', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
+    n = must(createPilot(n, other, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'Other pilot', communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
     const op = n.pilots.at(-1)!.id;
     n = must(setPilotStatus(n, op, 'active', clock));
     n = importRows(n, op, [row()]);
@@ -232,8 +232,8 @@ describe('contractor and pilot setup', () => {
     expect(createContractor(s, { businessName: 'X', primaryContact: 'Y', email: '', phone: '', timeZone: 'Mars/Base', notes: '' }, clock).ok).toBe(false);
     const c = must(createContractor(s, { businessName: 'X', primaryContact: 'Y', email: '', phone: '', timeZone: 'America/Chicago', notes: '' }, clock));
     const cid = c.contractors[0]!.id;
-    expect(createPilot(c, cid, { ...defaultPilotInput(TODAY), name: 'P', endDate: '2026-01-01' }, clock).ok).toBe(false);
-    const p = must(createPilot(c, cid, { ...defaultPilotInput(TODAY), name: 'P', endDate: '2026-12-31', approvedChannels: [] }, clock));
+    expect(createPilot(c, cid, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'P', endDate: '2026-01-01' }, clock).ok).toBe(false);
+    const p = must(createPilot(c, cid, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'P', endDate: '2026-12-31', approvedChannels: [] }, clock));
     const pid = p.pilots[0]!.id;
     const r = setPilotStatus(p, pid, 'active', clock);
     expect(!r.ok && r.error).toMatch(/Approve at least one/);
@@ -247,7 +247,7 @@ describe('contractor and pilot setup', () => {
     n = must(prepareDraft(n, rec(n, 'Alex Rivera').id, clock));
     const t = openTouch(rec(n, 'Alex Rivera'))!;
     n = must(submitForApproval(n, [t.id], clock));
-    n = must(updatePilot(n, pilotId, { ...defaultPilotInput(TODAY), name: 'P', approvedChannels: ['phone'], communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
+    n = must(updatePilot(n, pilotId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: 'P', approvedChannels: ['phone'], communicationPolicy: 'x', endDate: '2026-12-31' }, clock));
     expect(rec(n, 'Alex Rivera').touches[0]!.status).toBe('blocked');
     const r = approveDrafts(n, [t.id], clock);
     expect(r.ok && r.batch?.done).toEqual([]);

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { withDemoData } from '../data/demoSeed.ts';
+import { withSamplePipeline } from '../data/samplePipeline.ts';
 import { formatDate, formatTimestamp } from '../domain/dates.ts';
 import { clearPilot, clearPilotPreview, logExport, pilotExport } from '../domain/lifecycle.ts';
 import { formatPhone } from '../domain/normalize.ts';
@@ -98,23 +99,32 @@ export function DataPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: P
           </div>
         </Card>
 
-        <Card title="C. Reset demo data" subtitle="Restores the synthetic demonstration contractors and pilots. Pilots you created under non-demo contractors are not touched.">
+        <Card title="C. Demo data" subtitle="Replaces all sample/demo contractors and pilots. Pilots you created under non-demo contractors are never touched.">
           <div className="space-y-3 text-sm">
-            <p className="text-slate-600">Demo data: {state.contractors.filter((c) => c.isDemo).length} contractors, {state.pilots.filter((p) => p.isDemo).length} pilots, {state.records.filter((r) => state.pilots.find((p) => p.id === r.pilotId)?.isDemo).length} records.</p>
-            <Button
-              onClick={() => {
-                if (!window.confirm('Reset the demonstration data? Changes to demo pilots are lost. Non-demo pilots are kept.')) return;
-                wb.run((s, c) => {
-                  try {
-                    return { ok: true as const, state: withDemoData(s, c.today), message: 'Demo data restored. Non-demo pilots were not changed.' };
-                  } catch (e) {
-                    return { ok: false as const, error: `Reset failed: ${(e as Error).message}` };
-                  }
-                });
-              }}
-            >
-              Reset demo data
-            </Button>
+            <p className="text-slate-600">Demo data now: {state.contractors.filter((c) => c.isDemo).length} contractors, {state.pilots.filter((p) => p.isDemo).length} pilots, {state.records.filter((r) => state.pilots.find((p) => p.id === r.pilotId)?.isDemo).length} records.</p>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ['Sample pipeline (10)', withSamplePipeline, 'Sample roofing pipeline loaded.'],
+                ['Extended demo (35)', withDemoData, 'Extended demo loaded.'],
+              ] as const).map(([label, build, message]) => (
+                <Button
+                  key={label}
+                  onClick={() => {
+                    if (!window.confirm(`Load the ${label.toLowerCase()}? Current demo data is replaced; your real pilots are kept.`)) return;
+                    const r = wb.run((s, c) => {
+                      try {
+                        return { ok: true as const, state: build(s, c.today), message };
+                      } catch (e) {
+                        return { ok: false as const, error: `Could not load demo data: ${(e as Error).message}` };
+                      }
+                    });
+                    if (r.ok) onSelectPilot(r.state.pilots.find((p) => p.isDemo)?.id ?? '');
+                  }}
+                >
+                  Load {label.toLowerCase()}
+                </Button>
+              ))}
+            </div>
           </div>
         </Card>
       </div>

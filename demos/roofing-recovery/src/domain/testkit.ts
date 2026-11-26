@@ -47,14 +47,14 @@ export function csv(rows: RowInput[]): string {
 export function fixture(name = 'Test Roofing'): { s: WorkbenchState; contractorId: string; pilotId: string } {
   let s = must(createContractor(emptyState(), { businessName: name, primaryContact: 'Pat Owner', email: '', phone: '(512) 555-0100', timeZone: 'America/Chicago', notes: '' }, clock));
   const contractorId = s.contractors.at(-1)!.id;
-  s = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), name: `${name} pilot`, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
+  s = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: `${name} pilot`, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
   const pilotId = s.pilots.at(-1)!.id;
   s = must(setPilotStatus(s, pilotId, 'active', clock));
   return { s, contractorId, pilotId };
 }
 
 export function addPilot(s: WorkbenchState, contractorId: string, name: string): { s: WorkbenchState; pilotId: string } {
-  let n = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), name, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
+  let n = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
   const pilotId = n.pilots.at(-1)!.id;
   n = must(setPilotStatus(n, pilotId, 'active', clock));
   return { s: n, pilotId };

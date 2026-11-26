@@ -1,5 +1,5 @@
 import { addDays, isIsoDate } from './dates.ts';
-import { contactBlockers, eligibilityBlockers, findPilot, ledgerMatches, permittedChannels } from './eligibility.ts';
+import { contactBlockers, eligibilityBlockers, findPilot, ledgerMatches, permittedChannels, sameContact } from './eligibility.ts';
 import { normalizeEmail, normalizePhone } from './normalize.ts';
 import { fail, transact, type Tx } from './state.ts';
 import { draftText } from './templates.ts';
@@ -8,6 +8,7 @@ import {
   HANDOFF_OUTCOME_LABELS,
   OUTCOME_LABELS,
   POSITIVE_OUTCOMES,
+  REPLY_OUTCOMES,
   type Authorization,
   type Channel,
   type Clock,
@@ -141,12 +142,13 @@ export function setEligibilityStatus(tx: Tx, record: EstimateRecord, status: Eli
 export function applySuppression(tx: Tx, record: EstimateRecord, reason: string, channel: Channel | 'import' | 'other', date: IsoDate, source: 'operator' | 'homeowner' | 'contractor' | 'ledger' | 'import'): void {
   const pilot = getPilot(tx, record.pilotId);
   if (record.eligibility.status !== 'suppressed') setEligibilityStatus(tx, record, 'suppressed', reason, source);
-  if ((record.email || record.phone) && ledgerMatches(tx.s, pilot.contractorId, record.email, record.phone).length === 0) {
+  if ((record.email || record.phone || record.estimateRef) && ledgerMatches(tx.s, pilot.contractorId, record).length === 0) {
     tx.s.suppression.push({
       id: tx.id('sup'),
       contractorId: pilot.contractorId,
       email: record.email,
       phone: record.phone,
+      estimateRef: record.estimateRef,
       recordId: record.id,
       pilotId: record.pilotId,
       reason,
@@ -162,8 +164,7 @@ export function applySuppression(tx: Tx, record: EstimateRecord, reason: string,
   for (const other of tx.s.records) {
     if (other.id === record.id || other.eligibility.status === 'suppressed') continue;
     if (tx.s.pilots.find((p) => p.id === other.pilotId)?.contractorId !== pilot.contractorId) continue;
-    const same = (record.email && other.email === record.email) || (record.phone && other.phone === record.phone);
-    if (same) setEligibilityStatus(tx, other, 'suppressed', `Same contact suppressed on record ${record.id}: ${reason}`, 'ledger');
+    if (sameContact(record, other)) setEligibilityStatus(tx, other, 'suppressed', `Same contact suppressed on record ${record.id}: ${reason}`, 'ledger');
   }
 }
 
@@ -226,7 +227,7 @@ export function reviewRestriction(state: WorkbenchState, recordId: string, reaso
     if (reason.trim().length < 10) fail('Explain the reason for lifting the restriction (at least 10 characters).');
     if (from === 'suppressed') {
       const pilot = getPilot(tx, r.pilotId);
-      const matches = ledgerMatches(tx.s, pilot.contractorId, r.email, r.phone);
+      const matches = ledgerMatches(tx.s, pilot.contractorId, r);
       const others = matches.filter((e) => e.recordId !== r.id);
       if (others.length > 0) {
         fail(
@@ -258,6 +259,9 @@ export interface DetailsInput {
 export function updateRecordDetails(state: WorkbenchState, recordId: string, input: DetailsInput, clock: Clock): Result {
   return transact(state, clock, (tx) => {
     const r = getRecord(tx, recordId);
+    if (getPilot(tx, r.pilotId).contactMode === 'contractor_system' && (input.email.trim() || input.phone.trim())) {
+      fail("This is a privacy-safe pilot: phone numbers and emails stay in the contractor's system, not here.");
+    }
     const email = normalizeEmail(input.email);
     const phone = normalizePhone(input.phone);
     if (email.invalid) fail('Email address is not valid.');
@@ -274,7 +278,7 @@ export function updateRecordDetails(state: WorkbenchState, recordId: string, inp
     changed(tx, r);
     tx.log({ type: 'record_details_updated', ...ctx(r, tx), detail: 'Contact details or authorization evidence edited' });
     const pilot = getPilot(tx, r.pilotId);
-    if (ledgerMatches(tx.s, pilot.contractorId, r.email, r.phone).length > 0 && r.eligibility.status !== 'suppressed') {
+    if (ledgerMatches(tx.s, pilot.contractorId, r).length > 0 && r.eligibility.status !== 'suppressed') {
       setEligibilityStatus(tx, r, 'suppressed', 'Contact matches the suppression ledger', 'ledger');
       return 'Saved. The updated contact matches the suppression ledger, so the record is suppressed.';
     }
@@ -478,6 +482,10 @@ export function confirmContact(state: WorkbenchState, touchId: string, input: Co
     touch.outcome = input.outcome;
     touch.outcomeRecordedAt = clock.now;
     touch.notes = input.notes.trim();
+    if (REPLY_OUTCOMES.has(input.outcome)) {
+      touch.replyText = input.notes.trim();
+      touch.repliedOn = input.contactedOn;
+    }
     record.lastContactDate = input.contactedOn;
     record.updatedAt = clock.now;
     tx.log({
@@ -513,6 +521,8 @@ export function recordResponse(state: WorkbenchState, recordId: string, input: R
     last.outcome = input.outcome;
     last.outcomeRecordedAt = clock.now;
     last.notes = [last.notes, input.notes.trim()].filter(Boolean).join(' | ');
+    if (input.notes.trim()) last.replyText = input.notes.trim();
+    last.repliedOn = input.date;
     tx.log({ type: reclassify ? 'response_reclassified' : 'response_recorded', ...ctx(r, tx), from: prior, to: input.outcome, detail: `${OUTCOME_LABELS[input.outcome]} via ${input.channel} on ${input.date}${input.notes.trim() ? ` — ${input.notes.trim()}` : ''}` });
     cancelOpenTouches(tx, r, 'Homeowner responded');
     return applyOutcome(tx, r, input.outcome, input.channel, input.date);

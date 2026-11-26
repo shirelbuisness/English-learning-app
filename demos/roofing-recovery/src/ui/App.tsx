@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SAMPLE_PILOT, withSamplePipeline } from '../data/samplePipeline.ts';
+import { stripDemo } from '../domain/lifecycle.ts';
 import { buildQueue } from '../domain/queue.ts';
 import { PILOT_STATUS_LABELS } from '../domain/types.ts';
 import { DataPage } from './DataPage.tsx';
@@ -72,6 +74,32 @@ export function App() {
     window.scrollTo({ top: 0 });
   };
   const today = now().today;
+  const hasDemo = state.contractors.some((c) => c.isDemo);
+
+  const loadSample = () => {
+    if (hasDemo && !window.confirm('Replace the current demo data with a fresh sample roofing pipeline? Your real pilots are not touched.')) return;
+    const r = wb.run((s, c) => {
+      try {
+        return { ok: true as const, state: withSamplePipeline(s, c.today), message: 'Sample roofing pipeline loaded (fictional data).' };
+      } catch (e) {
+        return { ok: false as const, error: `Could not build the sample: ${(e as Error).message}` };
+      }
+    });
+    if (r.ok) {
+      setPilotId(r.state.pilots.find((p) => p.name === SAMPLE_PILOT)?.id ?? null);
+      go({ page: 'queue' });
+    }
+  };
+
+  const startReal = () => {
+    if (!window.confirm('Remove all sample/demo data and start a real pilot? Real pilots you already created are kept.')) return;
+    const r = wb.run((s) => ({ ok: true as const, state: stripDemo(s), message: 'Demo data removed. Create the contractor and pilot to begin.' }));
+    if (r.ok) {
+      setPilotId(r.state.pilots[0]?.id ?? null);
+      go({ page: 'setup' });
+    }
+  };
+
   const queueCount = useMemo(() => buildQueue(state, today).length, [state, today]);
   const record = route.page === 'record' ? state.records.find((r) => r.id === route.id) : undefined;
   const contractorName = (id: string) => state.contractors.find((c) => c.id === id)?.businessName ?? '?';
@@ -104,7 +132,17 @@ export function App() {
               );
             })}
           </nav>
-          <label className="ms-auto flex min-w-0 items-center gap-2 text-xs text-slate-500">
+          <div className="ms-auto flex items-center gap-1.5">
+            <button type="button" onClick={loadSample} className="rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-sage-700 ring-1 ring-sage-600/40 ring-inset hover:bg-sage-50">
+              Load sample pipeline
+            </button>
+            {hasDemo && (
+              <button type="button" onClick={startReal} className="rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-navy-800 ring-1 ring-slate-300 ring-inset hover:bg-slate-50">
+                Clear / start real pilot
+              </button>
+            )}
+          </div>
+          <label className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
             <span className="whitespace-nowrap">Working pilot</span>
             <select
               value={pilot?.id ?? ''}
@@ -126,15 +164,29 @@ export function App() {
             </select>
           </label>
         </div>
-        <div className="border-t border-amber-200 bg-amber-50">
-          <p className="mx-auto max-w-[1400px] px-4 py-1.5 text-xs text-amber-900">
-            <strong>Synthetic data only.</strong> Not approved for real contractor or homeowner data. Nothing is sent from this tool: emails and calls happen outside it and are recorded here by the operator.
-          </p>
-        </div>
+        {pilot?.isDemo ? (
+          <div className="border-t border-amber-200 bg-amber-50">
+            <p className="mx-auto max-w-[1400px] px-4 py-1.5 text-xs text-amber-900">
+              <strong>Sample data:</strong> every homeowner and contractor here is fictional. Nothing is ever sent from this tool: messages go out from the contractor’s own inbox or phone, and you record them here.
+            </p>
+          </div>
+        ) : pilot?.contactMode === 'in_workbench' ? (
+          <div className="border-t border-red-200 bg-red-50">
+            <p className="mx-auto max-w-[1400px] px-4 py-1.5 text-xs text-red-900">
+              <strong>This pilot stores homeowner contact details in this browser (unencrypted).</strong> Not approved for real data until the security and legal steps in the README are done. Prefer a privacy-safe pilot.
+            </p>
+          </div>
+        ) : (
+          <div className="border-t border-sage-100 bg-sage-50">
+            <p className="mx-auto max-w-[1400px] px-4 py-1.5 text-xs text-sage-700">
+              <strong>Privacy-safe pilot:</strong> keep only estimate IDs, first names, scope, amounts and notes here. Phone numbers, emails and addresses stay in the contractor’s system. Browser storage is not encrypted. Nothing is sent from this tool.
+            </p>
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-[1400px] px-4 py-5 print:p-0">
-        {route.page === 'queue' && <QueuePage wb={wb} go={go} />}
+        {route.page === 'queue' && <QueuePage wb={wb} go={go} pilot={pilot} />}
         {route.page === 'records' && <RecordsPage wb={wb} pilot={pilot} go={go} />}
         {route.page === 'record' &&
           (record ? (

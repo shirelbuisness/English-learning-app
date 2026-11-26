@@ -57,6 +57,19 @@ export function validateState(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Fill fields added after data was saved. Older pilots keep the stricter
+ * per-contact-consent mode they were created under.
+ */
+export function migrateState(state: WorkbenchState): WorkbenchState {
+  return {
+    ...state,
+    pilots: state.pilots.map((p) => ({ ...p, contactMode: p.contactMode ?? 'in_workbench', contractorAttestation: p.contractorAttestation ?? null })),
+    records: state.records.map((r) => ({ ...r, estimateRef: r.estimateRef ?? null, notes: r.notes ?? '' })),
+    suppression: state.suppression.map((e) => ({ ...e, estimateRef: e.estimateRef ?? null })),
+  };
+}
+
 /** Ensure the id counter is above every id in use, so new ids can never collide. */
 export function repairIdCounter(state: WorkbenchState): WorkbenchState {
   let max = 0;
@@ -93,7 +106,7 @@ export function createLocalStore(storage: Pick<Storage, 'getItem' | 'setItem'> |
       try {
         const parsed: unknown = JSON.parse(raw);
         const invalid = validateState(parsed);
-        if (!invalid) return { state: repairIdCounter(parsed as WorkbenchState), error: null, revision };
+        if (!invalid) return { state: repairIdCounter(migrateState(parsed as WorkbenchState)), error: null, revision };
         problem = invalid;
       } catch {
         // fall through

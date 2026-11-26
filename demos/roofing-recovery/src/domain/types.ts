@@ -167,6 +167,9 @@ export interface Touch {
   outcome: Outcome | null;
   outcomeRecordedAt: Timestamp | null;
   notes: string;
+  /** What the homeowner actually said, and when (kept apart from operator notes). */
+  replyText?: string;
+  repliedOn?: IsoDate | null;
 }
 
 export type RequestKind = 'callback' | 'inspection' | 'revised_estimate' | 'discussion' | 'other';
@@ -213,6 +216,10 @@ export interface Handoff {
 export interface EstimateRecord {
   id: string;
   pilotId: string;
+  /** The contractor's own estimate/quote number: how the homeowner is found in their CRM or inbox. */
+  estimateRef: string | null;
+  /** Contractor's context notes, e.g. "Waiting on adjuster", "Getting 2nd bid". */
+  notes: string;
   importId: string | null;
   rowNumber: number | null;
   /** The row exactly as imported, for provenance. */
@@ -255,6 +262,25 @@ export interface Contractor {
   createdAt: Timestamp;
 }
 
+/**
+ * Where homeowner contact details live.
+ * - contractor_system: privacy-safe mode. Only an estimate ID, first name and job details are
+ *   tracked here; phone/email stay in the contractor's CRM or inbox, and contact permission rests
+ *   on the contractor's recorded attestation for the pilot.
+ * - in_workbench: contact details and per-contact consent evidence are imported here.
+ */
+export type ContactMode = 'contractor_system' | 'in_workbench';
+export const CONTACT_MODE_LABELS: Record<ContactMode, string> = {
+  contractor_system: "Privacy-safe: contact details stay in the contractor's system",
+  in_workbench: 'Contact details and consent evidence imported here',
+};
+
+export interface ContractorAttestation {
+  /** What the contractor confirmed, in their words or ours, e.g. "All 25 homeowners requested an estimate…". */
+  text: string;
+  recordedOn: IsoDate;
+}
+
 export type PilotStatus = 'setup' | 'active' | 'paused' | 'completed';
 export const PILOT_STATUS_LABELS: Record<PilotStatus, string> = {
   setup: 'Setup',
@@ -272,6 +298,8 @@ export interface Pilot {
   recordLimit: number;
   approvedChannels: Channel[];
   communicationPolicy: string;
+  contactMode: ContactMode;
+  contractorAttestation: ContractorAttestation | null;
   sequence: SequenceStep[];
   status: PilotStatus;
   notes: string;
@@ -288,6 +316,7 @@ export interface SuppressionEntry {
   contractorId: string;
   email: string | null;
   phone: string | null;
+  estimateRef?: string | null;
   recordId: string | null;
   pilotId: string | null;
   reason: string;

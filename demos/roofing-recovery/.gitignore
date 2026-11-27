@@ -1,0 +1,11 @@
+node_modules
+dist
+*.local
+.vite
+coverage
+.DS_Store
+*.log
+# Never commit real pilot data or exports.
+exports/
+*.export.json
+real-*.csv

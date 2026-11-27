@@ -1,5 +1,5 @@
 import { prioritize, PRIORITY_ORDER, type PriorityCategory } from './priority.ts';
-import { contactedTouches, isRestricted, nextStep, openTouch, pendingReply, sequenceComplete, stepDueOn } from './records.ts';
+import { contactedTouches, isRestricted, nextStep, openTouch, pendingReply, replyTextOf, sequenceComplete, stepDueOn } from './records.ts';
 import { findPilot } from './eligibility.ts';
 import { OUTCOME_LABELS, type EstimateRecord, type IsoDate, type WorkbenchState } from './types.ts';
 
@@ -79,7 +79,10 @@ export function taskFor(state: WorkbenchState, r: EstimateRecord, today: IsoDate
   }
   if (r.qualification) return { ...base, kind: 'create_handoff', detail: `Homeowner requested: ${r.qualification.request.replace('_', ' ')}` };
   const reply = pendingReply(r);
-  if (reply) return { ...base, kind: 'reply', detail: `${OUTCOME_LABELS[reply.outcome!]}${reply.notes ? ` — ${reply.notes}` : ''}`, dueOn: reply.contactedOn };
+  if (reply) {
+    const said = replyTextOf(reply);
+    return { ...base, kind: 'reply', detail: `${OUTCOME_LABELS[reply.outcome!]}${said ? `: “${said}”` : ''}`, dueOn: reply.repliedOn ?? reply.contactedOn };
+  }
   if (r.eligibility.status === 'pending_review') return { ...base, kind: 'review', detail: pr.summary };
   if (r.eligibility.status !== 'eligible' || r.closed) return null;
 

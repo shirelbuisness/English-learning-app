@@ -21,6 +21,7 @@ import {
   openTouch,
   pendingReply,
   prepareDraft,
+  replyTextOf,
   qualifyReengagement,
   recordHandoffOutcome,
   recordResponse,
@@ -116,7 +117,9 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
           >
             <div className="space-y-3 text-sm">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-medium text-navy-900">{ELIGIBILITY_LABELS[r.eligibility.status]}</span>
+                <span className="font-medium text-navy-900">
+                  {r.eligibility.status === 'eligible' && pilot.contactMode === 'contractor_system' ? 'OK to contact (contractor’s permission)' : ELIGIBILITY_LABELS[r.eligibility.status]}
+                </span>
                 <span className="text-slate-600">— {r.eligibility.reason}</span>
                 <span className="text-xs text-slate-400">({r.eligibility.source}, {formatTimestamp(r.eligibility.decidedAt)})</span>
               </div>
@@ -140,7 +143,7 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
                 </div>
               )}
               <div className="text-xs text-slate-600">
-                Permitted channels (pilot-approved + documented consent + contact detail):{' '}
+                {pilot.contactMode === 'contractor_system' ? 'Allowed channels (approved for this pilot, covered by the contractor’s permission):' : 'Permitted channels (pilot-approved + documented consent + contact detail):'}{' '}
                 {permitted.length ? permitted.map((c) => <Badge key={c} tone="green">{CHANNEL_LABELS[c]}</Badge>) : <span className="text-red-800">none</span>}
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -210,7 +213,7 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
             <p className="mt-2 text-xs text-slate-500">Ranks work order only. Not a prediction that the homeowner will buy. The 14–60 day window is a hypothesis under test.</p>
           </Card>
 
-          <Card title="Contact and authorization evidence">
+          <Card title={pilot.contactMode === 'contractor_system' ? 'Contact & permission' : 'Contact and authorization evidence'}>
             <dl className="space-y-1.5 text-sm">
               {pilot.contactMode === 'contractor_system' && !r.email && !r.phone ? (
                 <Row k="Contact details" v={<span className="text-sage-700">In the contractor’s system{r.estimateRef ? ` under ${r.estimateRef}` : ''}</span>} />
@@ -223,13 +226,29 @@ export function RecordPage({ wb, record: r, go }: { wb: Workbench; record: Estim
               {pilot.contactMode === 'contractor_system' && (
                 <Row k="Permission basis" v={pilot.contractorAttestation ? `Contractor attestation ${formatDate(pilot.contractorAttestation.recordedOn)}` : <span className="text-red-800">No contractor attestation yet</span>} />
               )}
-              <Row k="Email consent" v={<ConsentBadge c={r.authorization.emailConsent} />} />
-              <Row k="Call consent" v={<ConsentBadge c={r.authorization.phoneConsent} />} />
-              <Row k="Text consent" v={<ConsentBadge c={r.authorization.smsConsent} />} />
-              <Row k="Evidence" v={r.authorization.evidence || <span className="text-red-800">None recorded</span>} />
-              <Row k="Contact info source" v={r.authorization.contactInfoSource || '—'} />
-              <Row k="Preferences" v={r.authorization.preferences || '—'} />
-              <Row k="Prior opt-out" v={r.authorization.priorOptOut ? 'Yes' : 'No'} />
+              {pilot.contactMode === 'contractor_system' ? (
+                <>
+                  {pilot.contractorAttestation && <Row k="What they confirmed" v={<span className="italic">“{pilot.contractorAttestation.text}”</span>} />}
+                  {(['email', 'phone', 'sms'] as const)
+                    .filter((c) => pilot.approvedChannels.includes(c))
+                    .map((c) => (
+                      <Row key={c} k={CHANNEL_LABELS[c]} v={<PermissionBadge ok={permitted.includes(c)} declined={(c === 'email' ? r.authorization.emailConsent : c === 'phone' ? r.authorization.phoneConsent : r.authorization.smsConsent) === 'no'} />} />
+                    ))}
+                  {r.authorization.evidence && <Row k="Extra evidence" v={r.authorization.evidence} />}
+                  {r.authorization.preferences && <Row k="Preferences" v={r.authorization.preferences} />}
+                  {r.authorization.priorOptOut && <Row k="Earlier opt-out" v={<span className="text-red-800">Yes</span>} />}
+                </>
+              ) : (
+                <>
+                  <Row k="Email consent" v={<ConsentBadge c={r.authorization.emailConsent} />} />
+                  <Row k="Call consent" v={<ConsentBadge c={r.authorization.phoneConsent} />} />
+                  <Row k="Text consent" v={<ConsentBadge c={r.authorization.smsConsent} />} />
+                  <Row k="Evidence" v={r.authorization.evidence || <span className="text-red-800">None recorded</span>} />
+                  <Row k="Contact info source" v={r.authorization.contactInfoSource || '—'} />
+                  <Row k="Preferences" v={r.authorization.preferences || '—'} />
+                  <Row k="Prior opt-out" v={r.authorization.priorOptOut ? 'Yes' : 'No'} />
+                </>
+              )}
             </dl>
             <details className="mt-3 text-xs text-slate-500">
               <summary className="cursor-pointer select-none">Original import row{r.rowNumber ? ` (row ${r.rowNumber})` : ''}</summary>
@@ -352,7 +371,8 @@ function TouchTimeline({ t }: { t: Touch }) {
     <div className="mt-0.5 text-xs text-slate-500">
       {parts.join(' · ')}
       {t.outcome && <span className="ms-1 font-medium text-slate-700">· Outcome: {OUTCOME_LABELS[t.outcome]}</span>}
-      {t.notes && <span className="block text-slate-600">Notes: {t.notes}</span>}
+      {t.replyText && <span className="block text-slate-700">They said: “{t.replyText}”</span>}
+      {t.notes && t.notes !== t.replyText && <span className="block text-slate-600">Your notes: {t.notes}</span>}
     </div>
   );
 }
@@ -483,7 +503,7 @@ function ReplyCard({ wb, record: r, form, setForm, today }: { wb: Workbench; rec
         <div className="space-y-3 text-sm">
           <p>
             <Badge tone="amber">{OUTCOME_LABELS[reply.outcome!]}</Badge> to step {reply.step} on {formatDate(reply.contactedOn)}
-            {reply.notes && <span className="text-slate-600"> — {reply.notes}</span>}
+            {replyTextOf(reply) && <span className="text-slate-700"> — “{replyTextOf(reply)}”</span>}
           </p>
           <p className="text-slate-600">Only a specific positive reply can be qualified. Reclassify this reply, or close the record if it needs no follow-up.</p>
           {form === 'late' ? (
@@ -500,7 +520,7 @@ function ReplyCard({ wb, record: r, form, setForm, today }: { wb: Workbench; rec
         <div className="space-y-3 text-sm">
           <p>
             <Badge tone="green">{OUTCOME_LABELS[reply.outcome!]}</Badge> to step {reply.step} on {formatDate(reply.contactedOn)}
-            {reply.notes && <span className="text-slate-600"> — {reply.notes}</span>}
+            {replyTextOf(reply) && <span className="text-slate-700"> — “{replyTextOf(reply)}”</span>}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Homeowner requested">
@@ -528,7 +548,7 @@ function ReplyCard({ wb, record: r, form, setForm, today }: { wb: Workbench; rec
 function HandoffCard({ wb, record: r, today }: { wb: Workbench; record: EstimateRecord; today: string }) {
   const h = r.handoff;
   const reply = lastContacted(r);
-  const [f, setF] = useState({ respondedOn: reply?.contactedOn ?? today, homeownerRequest: r.qualification ? REQUEST_LABELS[r.qualification.request] : '', conversationNotes: reply?.notes ?? '', nextAction: '' });
+  const [f, setF] = useState({ respondedOn: reply?.contactedOn ?? today, homeownerRequest: r.qualification ? REQUEST_LABELS[r.qualification.request] : '', conversationNotes: reply ? replyTextOf(reply) : '', nextAction: '' });
   const [date, setDate] = useState(today);
   const [ackNotes, setAckNotes] = useState('');
   const [oc, setOc] = useState<{ outcome: HandoffOutcome; notes: string; verified: boolean; value: string }>({ outcome: 'appointment_reported', notes: '', verified: false, value: '' });
@@ -708,6 +728,11 @@ function DetailsForm({ record: r, privacySafe, onSubmit, onCancel }: { record: E
       </div>
     </form>
   );
+}
+
+function PermissionBadge({ ok, declined }: { ok: boolean; declined: boolean }) {
+  if (declined) return <Badge tone="red">Homeowner said no</Badge>;
+  return ok ? <Badge tone="green">OK — covered by contractor’s permission</Badge> : <Badge tone="amber">Not yet — needs contractor’s permission</Badge>;
 }
 
 function ConsentBadge({ c }: { c: Consent }) {

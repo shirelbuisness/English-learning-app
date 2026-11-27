@@ -151,3 +151,28 @@ export function handoffList(state: WorkbenchState, pilotId: string) {
     .map((r) => ({ recordId: r.id, name: r.customerName, city: r.city, service: r.service, estimateAmount: r.estimateAmount, handoff: r.handoff! }))
     .sort((a, b) => a.handoff.respondedOn.localeCompare(b.handoff.respondedOn));
 }
+
+/**
+ * The contractor report's opening paragraph, in plain English. Handles zero and
+ * singular cases so it never reads "we passed those 0 homeowners to you".
+ */
+export function contractorSummary(r: PilotReport): string {
+  const imported = r.dataQuality.imported;
+  const cleared = r.reviewOutcome.clearedForFollowUp;
+  const contacted = r.activity.recordsContacted;
+  const replied = r.activity.repliesReceived;
+  const asked = r.outcomes.qualified;
+  const passed = r.outcomes.handoffs;
+  const parts = [`We reviewed ${imported} of your unsold ${imported === 1 ? 'estimate' : 'estimates'}.`];
+  parts.push(cleared === 0 ? 'None could be followed up yet.' : `${cleared} could be followed up under the contact permission you gave us.`);
+  if (contacted === 0) {
+    parts.push("We haven't followed up with anyone yet.");
+    return parts.join(' ');
+  }
+  parts.push(`With your approval of every message, we followed up with ${contacted} ${contacted === 1 ? 'homeowner' : 'homeowners'}.`);
+  if (replied === 0) parts.push('No replies yet.');
+  else if (asked === 0) parts.push(`${replied} ${replied === 1 ? 'has' : 'have'} replied so far.`);
+  else parts.push(`${replied} replied, and ${asked} confirmed the project is still open and asked for a next step.`);
+  if (passed > 0) parts.push(passed === 1 ? 'We passed that homeowner to you.' : `We passed those ${passed} homeowners to you.`);
+  return parts.join(' ');
+}

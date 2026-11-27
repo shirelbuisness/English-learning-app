@@ -422,6 +422,13 @@ export interface WorkbenchState {
 
 export type Result<T = WorkbenchState> = { ok: true; state: T; message: string } | { ok: false; error: string };
 
+/** Email-first default for new pilots: needs no texting setup (see README, messaging). */
+export const EMAIL_FIRST_SEQUENCE: SequenceStep[] = [
+  { step: 1, day: 1, channel: 'email', template: 'initial' },
+  { step: 2, day: 4, channel: 'email', template: 'unanswered' },
+  { step: 3, day: 9, channel: 'email', template: 'final' },
+];
+
 export const DEFAULT_SEQUENCE: SequenceStep[] = [
   { step: 1, day: 1, channel: 'email', template: 'initial' },
   { step: 2, day: 4, channel: 'phone', template: 'call_script' },

@@ -4,7 +4,7 @@ import { commitImport, TEMPLATE_COLUMNS } from './importer.ts';
 import { setEligibility } from './records.ts';
 import { createContractor, createPilot, defaultPilotInput, setPilotStatus } from './setup.ts';
 import { emptyState, must } from './state.ts';
-import type { EstimateRecord, WorkbenchState } from './types.ts';
+import { DEFAULT_SEQUENCE, type EstimateRecord, type WorkbenchState } from './types.ts';
 
 /* Test helpers only. */
 
@@ -47,7 +47,8 @@ export function csv(rows: RowInput[]): string {
 export function fixture(name = 'Test Roofing'): { s: WorkbenchState; contractorId: string; pilotId: string } {
   let s = must(createContractor(emptyState(), { businessName: name, primaryContact: 'Pat Owner', email: '', phone: '(512) 555-0100', timeZone: 'America/Chicago', notes: '' }, clock));
   const contractorId = s.contractors.at(-1)!.id;
-  s = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', name: `${name} pilot`, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
+  // Explicit email / phone / email sequence: several tests exercise the day-4 phone step.
+  s = must(createPilot(s, contractorId, { ...defaultPilotInput(TODAY), contactMode: 'in_workbench', sequence: DEFAULT_SEQUENCE.map((x) => ({ ...x })), name: `${name} pilot`, approvedChannels: ['email', 'phone'], communicationPolicy: 'Approved', endDate: '2026-12-31' }, clock));
   const pilotId = s.pilots.at(-1)!.id;
   s = must(setPilotStatus(s, pilotId, 'active', clock));
   return { s, contractorId, pilotId };

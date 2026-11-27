@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatDate, formatUsd } from '../domain/dates.ts';
-import { handoffList, pilotReport } from '../domain/report.ts';
+import { contractorSummary, handoffList, pilotReport } from '../domain/report.ts';
 import { CHANNEL_LABELS, HANDOFF_OUTCOME_LABELS, REQUEST_LABELS, type Pilot } from '../domain/types.ts';
 import { href } from './App.tsx';
 import { Button, cx, Empty } from './shared.tsx';
@@ -52,12 +52,7 @@ export function ContractorReportPage({ wb, pilot }: { wb: Workbench; pilot: Pilo
 
         <section className="mt-6">
           <h2 className="text-base font-semibold text-navy-900">Summary</h2>
-          <p className="mt-2">
-            We reviewed <strong>{q.imported}</strong> of your unsold estimates. <strong>{ro.clearedForFollowUp}</strong> could be followed up under the
-            contact permissions you documented. With your approval of every message, we followed up with <strong>{a.recordsContacted}</strong> homeowners.{' '}
-            <strong>{a.repliesReceived}</strong> replied, and <strong>{o.qualified}</strong> confirmed the project was still open and asked for a next step. We passed{' '}
-            {o.handoffs === 1 ? 'that homeowner' : `those ${o.handoffs} homeowners`} to you.
-          </p>
+          <p className="mt-2">{contractorSummary(r)}</p>
         </section>
 
         <Section title="1. What we reviewed">

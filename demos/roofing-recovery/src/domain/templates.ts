@@ -9,9 +9,20 @@ import type { Channel, Contractor, EstimateRecord, TemplateKey } from './types.t
 
 const first = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
-function serviceText(service: string): string {
-  const plain = service.replace(/\s*\([^)]*\)/g, '').trim() || 'roofing project';
-  return plain.charAt(0).toLowerCase() + plain.slice(1);
+/** Scope as a short, readable line item: "full replacement plus metal accent over porch". */
+function scopeText(service: string): string {
+  const plain = service
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\+\s*/g, ' plus ')
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return plain ? plain.charAt(0).toLowerCase() + plain.slice(1) : '';
+}
+
+/** Business name as homeowners know it (drops internal labels like "(sample)"). */
+function publicName(name: string): string {
+  return name.replace(/\s*\((sample|demo)\)\s*/gi, ' ').trim();
 }
 
 export type Situation = 'claim_approved' | 'insurance' | 'comparing' | 'deciding' | 'budget' | 'seasonal';
@@ -28,7 +39,7 @@ export function situationFromNotes(notes: string): Situation {
 }
 
 /** One natural sentence for the situation (email body). */
-function emailAngle(s: Situation, service: string): string {
+function emailAngle(s: Situation): string {
   switch (s) {
     case 'claim_approved':
       return `Glad to hear the claim came through. Whenever you're ready, we can get you on the schedule, and we're happy to help with any paperwork the insurance company needs from us.`;
@@ -41,7 +52,7 @@ function emailAngle(s: Situation, service: string): string {
     case 'budget':
       return `If timing or budget is the sticking point, we can look at the scope again or go over financing options. No pressure either way.`;
     case 'seasonal':
-      return `Our schedule for the next few weeks is filling up, so I wanted to check in before it does in case you'd like to get the ${service} on the calendar.`;
+      return `Our schedule for the next few weeks is filling up, so I wanted to check in before it does in case you'd like to get your roof on the calendar.`;
   }
 }
 
@@ -66,8 +77,9 @@ function smsAngle(s: Situation): string {
 export function draftText(template: TemplateKey, channel: Channel, record: EstimateRecord, contractor: Contractor): string {
   const name = first(record.customerName);
   const rep = first(contractor.primaryContact);
-  const biz = contractor.businessName;
-  const service = serviceText(record.service);
+  const biz = publicName(contractor.businessName);
+  const scope = scopeText(record.service);
+  const service = 'roof';
   const when = formatShortDate(record.estimateDate);
   const amount = record.estimateAmount > 0 ? ` (${formatUsd(record.estimateAmount)})` : '';
   const signOff = `${rep}\n${biz}${contractor.phone ? `\n${contractor.phone}` : ''}`;
@@ -75,7 +87,7 @@ export function draftText(template: TemplateKey, channel: Channel, record: Estim
 
   if (channel === 'phone' || template === 'call_script') {
     return [
-      `Call ${name}${record.estimateRef ? ` (${record.estimateRef})` : ''} about the ${service} estimate from ${when}${amount}.`,
+      `Call ${name}${record.estimateRef ? ` (${record.estimateRef})` : ''} about the roof estimate from ${when}${amount}${scope ? `: ${scope}` : ''}.`,
       `- Introduce: "${rep} asked me to check in on behalf of ${biz}."`,
       record.notes ? `- Context: ${record.notes}` : '- Ask whether the project is still open and if they have questions about the estimate.',
       `- Angle: ${smsAngle(situation)}`,
@@ -95,13 +107,13 @@ export function draftText(template: TemplateKey, channel: Channel, record: Estim
   switch (template) {
     case 'initial':
       return (
-        `Hi ${name},\n\nThis is ${rep} with ${biz}, following up on the estimate we put together for your ${service} on ${when}${amount}. ` +
-        `${emailAngle(situation, service)}\n\n` +
+        `Hi ${name},\n\nThis is ${rep} with ${biz}, following up on the roof estimate we sent you on ${when} (${[scope, record.estimateAmount > 0 ? formatUsd(record.estimateAmount) : ''].filter(Boolean).join(', ') || 'roof work'}). ` +
+        `${emailAngle(situation)}\n\n` +
         `If you've already gone another direction, just let me know and I'll close out your file.\n\n${signOff}`
       );
     case 'unanswered':
       return (
-        `Hi ${name},\n\nJust a quick follow-up on your ${service} estimate. ${emailAngle(situation, service)} ` +
+        `Hi ${name},\n\nJust a quick follow-up on your ${service} estimate. ${emailAngle(situation)} ` +
         `Reply here with a good time and we'll work around you.\n\n${signOff}`
       );
     case 'final':

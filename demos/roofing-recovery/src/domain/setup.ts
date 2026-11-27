@@ -2,7 +2,7 @@ import { isIsoDate } from './dates.ts';
 import { fail, transact } from './state.ts';
 import {
   CHANNELS,
-  DEFAULT_SEQUENCE,
+  EMAIL_FIRST_SEQUENCE,
   PILOT_STATUS_LABELS,
   type Channel,
   type Clock,
@@ -78,7 +78,7 @@ export function defaultPilotInput(today: string): PilotInput {
     communicationPolicy: '',
     contactMode: 'contractor_system',
     contractorAttestation: null,
-    sequence: DEFAULT_SEQUENCE.map((s) => ({ ...s })),
+    sequence: EMAIL_FIRST_SEQUENCE.map((s) => ({ ...s })),
     notes: '',
     hourlyCost: 45,
     revenue: 0,

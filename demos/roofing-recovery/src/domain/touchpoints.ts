@@ -1,7 +1,7 @@
 import { daysBetween, formatShortDate, formatUsd } from './dates.ts';
 import { findPilot } from './eligibility.ts';
 import { formatPhone } from './normalize.ts';
-import { isRestricted, lastContacted, pendingReply } from './records.ts';
+import { isRestricted, lastContacted, pendingReply, replyTextOf } from './records.ts';
 import { CHANNEL_LABELS, OUTCOME_LABELS, type EstimateRecord, type Outcome, type Touch, type WorkbenchState } from './types.ts';
 
 /*
@@ -63,7 +63,7 @@ export function warmLeadCard(state: WorkbenchState, recordId: string, today: str
   const pilot = findPilot(state, r.pilotId);
   const name = firstName(r.customerName);
   const next = r.handoff?.nextAction || (NEXT_ACTION[reply.outcome] ?? 'Call them back today.').replace('them', name);
-  const said = (reply.replyText || r.handoff?.homeownerRequest || OUTCOME_LABELS[reply.outcome]).trim();
+  const said = (replyTextOf(reply) || r.handoff?.homeownerRequest || OUTCOME_LABELS[reply.outcome]).trim();
   const repliedOn = reply.repliedOn ?? reply.contactedOn;
   const where = [r.city, r.state].filter(Boolean).join(', ');
   const contact =

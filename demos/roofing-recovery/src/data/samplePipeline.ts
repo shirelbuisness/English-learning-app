@@ -23,7 +23,7 @@ import type { Channel, Clock, IsoDate, Result, WorkbenchState } from '../domain/
  * Built by running the real domain commands, back-dated relative to today.
  */
 
-export const SAMPLE_CONTRACTOR = 'Lone Star Roofing & Exteriors (sample)';
+export const SAMPLE_CONTRACTOR = 'Lone Star Roofing & Exteriors';
 export const SAMPLE_PILOT = 'Founding Partner Pilot (sample)';
 
 /** [Estimate ID, First Name, Roof Scope, Quote Amount, Days Since Sent (as of today), Notes] */

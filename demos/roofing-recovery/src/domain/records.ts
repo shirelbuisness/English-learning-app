@@ -41,6 +41,11 @@ export function lastContacted(record: EstimateRecord): Touch | undefined {
   return contactedTouches(record).at(-1);
 }
 
+/** What the homeowner actually said (never the operator's own notes, when they were recorded separately). */
+export function replyTextOf(t: Touch): string {
+  return (t.replyText ?? t.notes ?? '').trim();
+}
+
 /** A reply that needs operator attention: a response other than no-response/opt-out/decline, not yet qualified or closed. */
 export function pendingReply(record: EstimateRecord): Touch | undefined {
   const last = lastContacted(record);
@@ -183,7 +188,9 @@ export function setEligibility(state: WorkbenchState, recordId: string, decision
       if (blockers.length > 0) fail(`Cannot mark eligible: ${blockers.join('; ')}.`);
     }
     if (decision !== 'eligible' && !reason.trim()) fail('A reason is required.');
-    setEligibilityStatus(tx, r, decision, reason.trim() || 'Eligibility confirmed by operator against documented authorization', 'operator');
+    const privacySafe = getPilot(tx, r.pilotId).contactMode === 'contractor_system';
+    const defaultReason = privacySafe ? "Confirmed OK to contact under the contractor's permission for this pilot" : 'Eligibility confirmed by operator against documented authorization';
+    setEligibilityStatus(tx, r, decision, reason.trim() || defaultReason, 'operator');
     return decision === 'eligible' ? 'Marked eligible.' : `Marked ${ELIGIBILITY_SHORT[decision].toLowerCase()}.`;
   });
 }
@@ -520,7 +527,7 @@ export function recordResponse(state: WorkbenchState, recordId: string, input: R
     const prior = last.outcome!;
     last.outcome = input.outcome;
     last.outcomeRecordedAt = clock.now;
-    last.notes = [last.notes, input.notes.trim()].filter(Boolean).join(' | ');
+    // The homeowner's words are kept apart from the operator's own notes on the contact.
     if (input.notes.trim()) last.replyText = input.notes.trim();
     last.repliedOn = input.date;
     tx.log({ type: reclassify ? 'response_reclassified' : 'response_recorded', ...ctx(r, tx), from: prior, to: input.outcome, detail: `${OUTCOME_LABELS[input.outcome]} via ${input.channel} on ${input.date}${input.notes.trim() ? ` — ${input.notes.trim()}` : ''}` });

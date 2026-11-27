@@ -50,7 +50,7 @@ export function SetupPage({ wb, pilot, onSelectPilot }: { wb: Workbench; pilot: 
             }
           >
             {editPilot?.contractorId === c.id && c.isDemo && !editPilot.pilot && (
-              <p className="mb-2 text-xs text-amber-900">Pilots under a demo contractor are demo data: “Reset demo data” deletes them.</p>
+              <p className="mb-2 text-xs text-amber-900">Pilots under a sample contractor are demo data: “Load sample pipeline” and “Clear / start real pilot” delete them. Create a new contractor for real work.</p>
             )}
             {editPilot?.contractorId === c.id && (
               <PilotForm
@@ -141,6 +141,7 @@ function ContractorForm({ initial, onSubmit, onCancel }: { initial: ContractorIn
 
 function PilotForm({ initial, isNew, onSubmit, onCancel }: { initial: PilotInput; isNew: boolean; onSubmit: (i: PilotInput) => void; onCancel: () => void }) {
   const [f, setF] = useState({ ...initial, recordLimit: String(initial.recordLimit), hourlyCost: String(initial.hourlyCost), revenue: String(initial.revenue), sequence: initial.sequence.map((s) => ({ ...s })) });
+  const unapprovedSteps = f.sequence.filter((st) => !f.approvedChannels.includes(st.channel)).map((st) => st.step);
   const toggle = (c: Channel) => setF({ ...f, approvedChannels: f.approvedChannels.includes(c) ? f.approvedChannels.filter((x) => x !== c) : [...f.approvedChannels, c] });
   return (
     <form
@@ -189,6 +190,11 @@ function PilotForm({ initial, isNew, onSubmit, onCancel }: { initial: PilotInput
       <Field label="Approved communication policy / templates" className="sm:col-span-4" hint="What the contractor approved: who may be contacted, how, and the message templates. Required before activation.">
         <textarea rows={3} className={inputClass} value={f.communicationPolicy} onChange={(e) => setF({ ...f, communicationPolicy: e.target.value })} />
       </Field>
+      {unapprovedSteps.length > 0 && (
+        <p className="text-xs text-amber-900 sm:col-span-4">
+          Step {unapprovedSteps.join(' and ')} {unapprovedSteps.length === 1 ? 'uses a channel' : 'use channels'} not approved above. Those steps will use an approved channel instead. Tick the channel, or change the step.
+        </p>
+      )}
       <div className="sm:col-span-4">
         <div className="mb-1 text-xs font-medium text-slate-600">Sequence guidance (experimental defaults; used only where the channel is permitted)</div>
         <div className="grid gap-2 sm:grid-cols-3">

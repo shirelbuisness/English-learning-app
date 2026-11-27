@@ -40,6 +40,11 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
   }
 
   const rows = analysis?.rows ?? [];
+  // Only mention missing columns that matter for this kind of pilot, in plain words.
+  const HELPFUL: Record<string, string> = pilot.contactMode === 'contractor_system'
+    ? { estimate_ref: 'estimate ID', notes: 'notes', service_requested: 'roof scope' }
+    : { estimate_ref: 'estimate ID', notes: 'notes', service_requested: 'roof scope', customer_email: 'email', customer_phone: 'phone', email_consent: 'email consent', authorization_evidence: 'consent evidence' };
+  const missingHelpful = (analysis?.missingOptionalColumns ?? []).filter((c) => c in HELPFUL).map((c) => HELPFUL[c]!);
   const action = (r: RowAnalysis) => decisions[r.rowNumber] ?? r.defaultAction;
   const toImport = rows.filter((r) => action(r) === 'import').length;
   const toUpdate = rows.filter((r) => action(r) === 'update').length;
@@ -67,7 +72,7 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
       <div>
         <h1 className="text-xl font-semibold text-navy-900">Import estimates · {pilot.name}</h1>
         <p className="text-sm text-slate-500">
-          Preview, check and choose per row before anything is saved. Duplicates match on exact normalised email or phone within this pilot only. {state.records.filter((r) => r.pilotId === pilot.id).length} of {pilot.recordLimit} agreed records used.
+          Preview, check and choose per row before anything is saved. Duplicates are matched on the estimate ID, email or phone, within this pilot only. {state.records.filter((r) => r.pilotId === pilot.id).length} of {pilot.recordLimit} agreed records used.
         </p>
       </div>
 
@@ -80,7 +85,15 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
               <textarea rows={5} className={cx(inputClass, 'mt-2 font-mono text-xs')} value={text} onChange={(e) => { setText(e.target.value); setFileName('pasted.csv'); setDecisions({}); }} placeholder={TEMPLATE_COLUMNS.join(',')} />
             </details>
             {fileError && <Callout tone="red">{fileError}</Callout>}
-            <Callout tone="amber">Synthetic data only. Do not import real homeowner information into this prototype.</Callout>
+            {pilot.isDemo ? (
+              <Callout tone="amber">Sample pilot: use fictional data here.</Callout>
+            ) : pilot.contactMode === 'contractor_system' ? (
+              <Callout tone="green">
+                Privacy-safe pilot: only estimate IDs, first names, roof scope, amounts, dates and notes are kept. Phone numbers, emails, surnames and addresses are dropped automatically.
+              </Callout>
+            ) : (
+              <Callout tone="red">This pilot keeps homeowner contact details in this browser (unencrypted). Not approved for real homeowner data; use a privacy-safe pilot instead.</Callout>
+            )}
           </div>
         </Card>
         <Card title="CSV format" action={<Button size="sm" variant="primary" onClick={() => download('sample-estimates.csv', sampleEstimatesCsv())}>Download sample-estimates.csv</Button>}>
@@ -97,7 +110,11 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
               {TEMPLATE_COLUMNS.map((c) => <div key={c}><dt className="font-mono text-navy-900">{c}</dt><dd>{COLUMN_HELP[c]}</dd></div>)}
             </dl>
           </details>
-          <p className="mt-2 text-xs text-slate-500">Missing or unclear consent is imported as "unknown", which never counts as permission. New records start in "Pending review".</p>
+          <p className="mt-2 text-xs text-slate-500">
+            {pilot.contactMode === 'contractor_system'
+              ? 'Permission comes from the contractor’s confirmation on the pilot. New records start in review so you can check each one.'
+              : 'Missing or unclear consent is imported as "unknown", which never counts as permission. New records start in review.'}
+          </p>
         </Card>
       </div>
 
@@ -114,7 +131,9 @@ export function ImportPage({ wb, pilot, go }: { wb: Workbench; pilot: Pilot | nu
             </Callout>
           )}
           {analysis.unknownColumns.length > 0 && <p className="mb-2 text-xs text-slate-500">Ignored columns: {analysis.unknownColumns.join(', ')}. Kept in each record's original import row.</p>}
-          {analysis.missingOptionalColumns.length > 0 && <p className="mb-2 text-xs text-amber-900">Columns not in file (treated as blank/unknown): {analysis.missingOptionalColumns.join(', ')}.</p>}
+          {missingHelpful.length > 0 && (
+            <p className="mb-2 text-xs text-slate-600">Tip: the file has no {missingHelpful.join(' or ')} column. {missingHelpful.includes('notes') ? 'Notes like “waiting on adjuster” make the follow-ups personal.' : ''}</p>
+          )}
           <div className="-mx-4 overflow-x-auto">
             <table className="w-full min-w-[1000px] text-sm">
               <thead className="border-y border-slate-100 bg-slate-50">
